@@ -1,0 +1,54 @@
+# .goreleaser.yml — release / build config (SPEC §11.4 B01/B02/B04)
+# Produces a single binary per platform into dist/ via `make build`.
+# Build metadata embedded via ldflags: appName, appVersion, appCommitHash,
+# appTimestamp (B02). The container image is built by `make container-image`
+# from this release binary (B04/N18) — not by goreleaser.
+version: 2
+
+project_name: mcp-miniflux
+
+env:
+  - GO111MODULE=on
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: mcp-server
+    main: ./cmd/mcp-miniflux
+    binary: mcp-server
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+        -X main.appName={{ .ProjectName }}
+        -X main.appVersion={{ .Version }}
+        -X main.appCommitHash={{ .FullCommit }}
+        -X main.appTimestamp={{ .Timestamp }}
+
+archives:
+  - id: mcp-server
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: 'checksums.txt'
+
+release:
+  github:
+    owner: teran
+    name: mcp-miniflux
+  prerelease: auto
+
+# The OCI image is intentionally NOT built by goreleaser; `make container-image`
+# builds and pushes it from the release binary (B04/N18).

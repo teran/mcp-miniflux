@@ -1,0 +1,146 @@
+# .github/workflows/ci.yml — GitHub Actions (SPEC §11.2 R06)
+#
+# 4-stage pipeline bound to the build-system interface (R07/N31):
+#   linters -> build -> tests -> release artifacts
+# Plus two dedicated hard-gate jobs NOT part of the make interface:
+#   gremlins mutation (C02/C08GO) and gitleaks secret scan (C03/N28).
+# No job invokes an undeclared optional target. Findings are FIXED, never
+# suppressed (S05/N02GO). No e2e job — no e2e suite exists (§11.5, C04/T02 N/A).
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags: ['*']
+  pull_request:
+    branches: [master]
+
+env:
+  GO_VERSION: "1.27"
+  # Pinned toolchain versions (single source of truth: reference/versions.md)
+  GREMLINS_VERSION: "v0.6.0"
+  GITLEAKS_VERSION: "v8.30.1"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Stage 1 — linters (make lint): golangci-lint + vet + gosec + govulncheck + go-arch-lint
+  lint:
+    name: Linters (make lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Install toolchain
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
+          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+          go install github.com/fe3dback/go-arch-lint@v1.19.0
+      - name: Run make lint
+        run: make lint
+
+  # Stage 2 — build (make build): goreleaser single binary per platform
+  build:
+    name: Build (make build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Install goreleaser
+        run: |
+          go install github.com/goreleaser/goreleaser/v2@v2.18.2
+      - name: Run make build
+        run: make build
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  # Stage 3 — tests (make test): go test -race + coverage >= 95% gate
+  test:
+    name: Tests (make test, coverage >= 95%)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Run make test
+        run: make test
+
+  # Hard gate — mutation testing (gremlins), NOT part of the make interface.
+  # Fails the build below 80% efficacy / 80% mutation coverage (C02/C08GO/N03GO).
+  mutation:
+    name: Mutation gate (gremlins)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Install gremlins
+        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@${{ env.GREMLINS_VERSION }}
+      - name: Run gremlins unleash
+        run: gremlins unleash ./... --threshold-efficacy=80 --threshold-mcover=80
+
+  # Hard gate — secret scan (gitleaks) over git history (C03/N28).
+  # Full history required; findings fixed, never suppressed.
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          go install github.com/gitleaks/gitleaks/v8@${{ env.GITLEAKS_VERSION }}
+      - name: Run gitleaks detect
+        run: gitleaks detect --source . --redact --verbose
+
+  # Stage 4 — release artifacts (tags only): goreleaser release + push image
+  release:
+    name: Release artifacts
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [lint, build, test, mutation, secret-scan]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Install goreleaser
+        run: go install github.com/goreleaser/goreleaser/v2@v2.18.2
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Goreleaser release
+        run: goreleaser release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push container image (make container-image push=true)
+        run: make container-image push=true

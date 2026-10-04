@@ -31,3 +31,19 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# --- Phase 1 build-system artifacts (appended) ---
+# Code coverage profile (make test)
+coverage.out
+
+# Release / build artifacts (make build, goreleaser)
+dist/
+
+# Local tool binaries
+bin/
+
+# Log files (make lint / local runs)
+*.log
+
+# Temporary build artifacts
+/tmp/build/
