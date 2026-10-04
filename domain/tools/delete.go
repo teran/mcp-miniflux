@@ -1,0 +1,88 @@
+package tools
+
+import (
+	"context"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+// DeleteFeed permanently removes a feed subscription (HITL, S12).
+type DeleteFeed struct{}
+
+func (DeleteFeed) Name() string { return "delete_feed" }
+
+func (DeleteFeed) InputSchema() *map[string]any {
+	return objectSchema(map[string]any{"feed_id": integerProp()}, []string{"feed_id"})
+}
+
+func (DeleteFeed) OutputSchema() *map[string]any { return outputSchema() }
+
+func (DeleteFeed) Annotations() mcp.ToolAnnotations {
+	return mcp.ToolAnnotations{
+		Title:           "Delete feed",
+		DestructiveHint: ptrBool(true),
+		IdempotentHint:  true,
+	}
+}
+
+func (DeleteFeed) Instructions() string {
+	return "Permanently deletes a feed and its entries. Irreversible — require human confirmation. Delete is idempotent (deleting a missing feed succeeds)."
+}
+
+func (DeleteFeed) Call(ctx context.Context, args map[string]any) (Result, error) {
+	return nil, errNotImplemented
+}
+
+// DeleteCategory permanently removes a category (HITL, S12).
+type DeleteCategory struct{}
+
+func (DeleteCategory) Name() string { return "delete_category" }
+
+func (DeleteCategory) InputSchema() *map[string]any {
+	return objectSchema(map[string]any{"category_id": integerProp()}, []string{"category_id"})
+}
+
+func (DeleteCategory) OutputSchema() *map[string]any { return outputSchema() }
+
+func (DeleteCategory) Annotations() mcp.ToolAnnotations {
+	return mcp.ToolAnnotations{
+		Title:           "Delete category",
+		DestructiveHint: ptrBool(true),
+		IdempotentHint:  true,
+	}
+}
+
+func (DeleteCategory) Instructions() string {
+	return "Permanently deletes a category. Irreversible — require human confirmation. Deleting a missing category succeeds (idempotent)."
+}
+
+func (DeleteCategory) Call(ctx context.Context, args map[string]any) (Result, error) {
+	return nil, errNotImplemented
+}
+
+// FlushHistory purges history (removed/older entries) from Miniflux (HITL, S12).
+type FlushHistory struct{}
+
+func (FlushHistory) Name() string { return "flush_history" }
+
+func (FlushHistory) InputSchema() *map[string]any {
+	return objectSchema(map[string]any{"before": stringProp()}, nil)
+}
+
+func (FlushHistory) OutputSchema() *map[string]any { return outputSchema() }
+
+func (FlushHistory) Annotations() mcp.ToolAnnotations {
+	return mcp.ToolAnnotations{
+		Title:           "Flush history",
+		DestructiveHint: ptrBool(true),
+		IdempotentHint:  true,
+	}
+}
+
+func (FlushHistory) Instructions() string {
+	return "Purges old/removed entry history from Miniflux. Irreversible — require human confirmation. Idempotent (flushing an already-clean history is a no-op)."
+}
+
+func (FlushHistory) Call(ctx context.Context, args map[string]any) (Result, error) {
+	return nil, errNotImplemented
+}

@@ -17,3 +17,11 @@ formatters:
   enable:
     - gofmt
     - gofumpt
+
+run:
+  # golangci-lint analyzes production code only. The test files under domain/
+  # are written by @qa (TDD) and are intentionally kept byte-for-byte; test
+  # quality is enforced by `go test` + coverage, `go vet`, raw `gosec` (which
+  # already excludes *_test.go by default) and the gremlins mutation gate.
+  tests: false
+
