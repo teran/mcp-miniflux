@@ -11,6 +11,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/teran/mcp-miniflux/domain/requestid"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -105,22 +107,18 @@ func setLevel(l *logrus.Logger, level, fallback string) error {
 	return nil
 }
 
-// ctxKey is the unexported context key for the request_id (L09/L04GO).
-type ctxKey struct{}
-
-// WithRequestID stores the request id in ctx (L09).
+// WithRequestID stores the request id in ctx (L09). It delegates to the
+// canonical helper in domain/requestid so the same correlation id is visible to
+// the outbound Miniflux client without an infrastructure->infrastructure edge
+// (SPEC §6.1).
 func WithRequestID(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, ctxKey{}, id)
+	return requestid.WithRequestID(ctx, id)
 }
 
 // RequestIDFromContext retrieves the request id from ctx, returning "" when
 // absent (L09).
 func RequestIDFromContext(ctx context.Context) string {
-	if ctx == nil {
-		return ""
-	}
-	v, _ := ctx.Value(ctxKey{}).(string)
-	return v
+	return requestid.RequestIDFromContext(ctx)
 }
 
 // WithContext returns a logrus.Entry bound to ctx; when ctx carries a

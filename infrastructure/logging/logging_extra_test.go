@@ -1,7 +1,6 @@
 package logging
 
 import (
-	"context"
 	"log/slog"
 	"testing"
 
@@ -9,18 +8,11 @@ import (
 )
 
 // TestRequestIDFromContextNil guards the nil-context path (L09): a nil context
-// must yield "" without panicking.
+// must yield "" without panicking. The wrong-type guard now lives in
+// domain/requestid (the canonical home of the context key).
 func TestRequestIDFromContextNil(t *testing.T) {
 	if got := RequestIDFromContext(nil); got != "" {
 		t.Errorf("RequestIDFromContext(nil) = %q, want empty", got)
-	}
-}
-
-// TestRequestIDFromContextWrongType guards against a non-string stored value.
-func TestRequestIDFromContextWrongType(t *testing.T) {
-	ctx := context.WithValue(context.Background(), ctxKey{}, 42)
-	if got := RequestIDFromContext(ctx); got != "" {
-		t.Errorf("RequestIDFromContext(wrong type) = %q, want empty", got)
 	}
 }
 

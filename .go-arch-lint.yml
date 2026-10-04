@@ -27,7 +27,6 @@ components:
       - application/**
   infrastructure:
     in:
-      - infrastructure
       - infrastructure/**
   domain:
     in:

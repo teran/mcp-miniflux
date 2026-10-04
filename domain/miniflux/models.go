@@ -90,3 +90,68 @@ type Categories []Category
 
 // Feeds is a list wrapper for feeds.
 type Feeds []Feed
+
+// EntryFilter carries the optional query parameters for listing entries
+// (SPEC §4.1). Pointer fields distinguish "unset" from a zero value so that
+// absent filters are omitted from the upstream query string.
+type EntryFilter struct {
+	Status     string     `json:"status,omitempty"`
+	Order      string     `json:"order,omitempty"`
+	Direction  string     `json:"direction,omitempty"`
+	Limit      int        `json:"limit,omitempty"`
+	Offset     int        `json:"offset,omitempty"`
+	Search     string     `json:"search,omitempty"`
+	Starred    *bool      `json:"starred,omitempty"`
+	CategoryID *int       `json:"category_id,omitempty"`
+	Before     *time.Time `json:"before,omitempty"`
+	After      *time.Time `json:"after,omitempty"`
+}
+
+// DiscoveryResult models a single candidate feed returned by the Miniflux
+// discovery endpoint (SPEC §4.1). The payload is untrusted external data
+// (S07/N20) and is returned structurally.
+type DiscoveryResult struct {
+	URL   string `json:"url"`
+	Title string `json:"title"`
+	Type  string `json:"type"`
+}
+
+// CreateFeedRequest is the body of POST /v1/feeds (SPEC §4.2). Password and
+// Username are HTTP basic-auth credentials annotated `secret:"true"` (S02).
+type CreateFeedRequest struct {
+	FeedURL    string `json:"feed_url"`
+	CategoryID *int   `json:"category_id,omitempty"`
+	Title      string `json:"title,omitempty"`
+	Username   string `json:"username,omitempty" secret:"true"`
+	Password   string `json:"password,omitempty" secret:"true"`
+}
+
+// UpdateFeedRequest is the body of PUT /v1/feeds/{feedID} (SPEC §4.2). Only
+// the provided fields are sent; credentials are annotated `secret:"true"`.
+type UpdateFeedRequest struct {
+	Title        string `json:"title,omitempty"`
+	SiteURL      string `json:"site_url,omitempty"`
+	CategoryID   *int   `json:"category_id,omitempty"`
+	Username     string `json:"username,omitempty" secret:"true"`
+	Password     string `json:"password,omitempty" secret:"true"`
+	UserAgent    string `json:"user_agent,omitempty"`
+	ScraperRules string `json:"scraper_rules,omitempty"`
+	RewriteRules string `json:"rewrite_rules,omitempty"`
+	Crawler      *bool  `json:"crawler,omitempty"`
+}
+
+// UpdateEntriesRequest is the body of PUT /v1/entries (SPEC §4.2) for the
+// bulk status/starred update.
+type UpdateEntriesRequest struct {
+	EntryIDs []int  `json:"entry_ids"`
+	Status   string `json:"status,omitempty"`
+	Starred  *bool  `json:"starred,omitempty"`
+}
+
+// UpdateEntryRequest is the body of PUT /v1/entries/{entryID} (SPEC §4.2) for
+// editing an entry's title/content/url.
+type UpdateEntryRequest struct {
+	Title   string `json:"title,omitempty"`
+	Content string `json:"content,omitempty"`
+	URL     string `json:"url,omitempty"`
+}
