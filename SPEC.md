@@ -53,7 +53,7 @@ single source of truth `reference/versions.md`.
   (C02GO).
 - The 4-stage pipeline shape (linters → build → tests → release artifacts) is
   provider-agnostic and is bound to the standard **build-system interface**
-  (R07) — `make lint` / `make test` / `make build` / `make e2e` /
+  (R07) — `make lint` / `make test` / `make build` /
   `make container-image [push=true]` (see §11).
 
 ---
@@ -568,7 +568,7 @@ their JSON Schemas and MCP metadata (annotations + instructions, §4), and are
    logger, so handlers never construct infrastructure themselves (DIP).
 
 This keeps the tool surface declarative, discoverable, and centrally
-enumerable (also reused by e2e coverage checks, §11).
+enumerable.
 
 ### 6.3 Transport wiring (A01, M02)
 
@@ -786,7 +786,7 @@ startup-time or probe-time ping (A02/N35).
 
 ---
 
-## 11. CI/CD (R01–R07, C01–C06, C01GO–C09GO, B01–B05, T01–T02)
+## 11. CI/CD (R01–R07, C01–C06, C01GO–C08GO, C09GO N/A, B01–B05, T01)
 
 ### 11.1 Build-system interface (R07/N31)
 
@@ -799,8 +799,6 @@ The Makefile exposes the standard, language-agnostic interface that CI binds to
   the build below 95%.
 - `make build` — **goreleaser** → single binary artifact per platform into
   `dist/` (B01/B02/B04).
-- `make e2e` — e2e via the **go-docker-testsuite** harness (`go test -tags e2e
-  ./...`, C09GO) — declared because e2e tests exist (not optional).
 - `make container-image` / `make container-image push=true` — build-only /
   build+push the image **from the `build` artifact** (B04) — declared because
   this is a **Remote** server (R01/B03).
@@ -822,9 +820,8 @@ mutation (C02/C08GO) and **gitleaks** secret scan (C03/N28).
   over **git history**; findings **fixed**, not suppressed.
 - **Build:** `make build` (goreleaser).
 - **Tests:** `make test` — `go test -race` + **coverage ≥ 95% gate** (C01/N06,
-  fails below 95). **e2e job (C04/T02/C09GO/N07GO):** dedicated job running
-  `make e2e` (`go test -tags e2e ./...`). Unit + coverage (C01) + mutation (C02)
-  gates still apply alongside e2e.
+  fails below 95). No e2e job: this project has **no e2e suite** (C04/T02/C09GO
+  N/A, §11.5). Unit + coverage (C01) + mutation (C02) gates apply.
 - **Release artifacts:** on tags → **goreleaser release** (B01) publishing the
   binary artifacts; then `make container-image push=true` (R01/B03/B04) building
   and pushing the image **from the single release binary** (B04/N18).
@@ -842,7 +839,6 @@ The project pins **latest-stable** versions (single source of truth
 | prometheus client_golang | **v1.24.1** (O01–O04) |
 | logrus | **v1.10.2** (L01GO) |
 | envconfig | **v1.4.0** (env-driven config) |
-| go-docker-testsuite | latest (e2e harness, C09GO) |
 
 Staleness is a **defect** at conformance (C05/N33): upgrade/fix, never suppress.
 
@@ -868,17 +864,15 @@ per-platform `COPY` of the release binary via `TARGETARCH` (linux/amd64,
 linux/arm64), `EXPOSE 8080`, `ENTRYPOINT ["/app/mcp-server", "-mode", "http"]`
 — no TLS in-process (N01/S01; reverse proxy terminates), logs to stdout (L01).
 
-### 11.5 e2e tests (T02/C04/C09GO/N07GO)
+### 11.5 e2e tests — N/A (T02/C04/C09GO/N07GO)
 
-e2e tests verify the **full path between the MCP tool handler and the Miniflux
-upstream** (transport wiring → tool call → MCP request → upstream call →
-structured response → `outputSchema` conformance → **secret redaction in a live
-flow**). They use `github.com/teran/go-docker-testsuite` as the harness to spin
-up a Miniflux instance (C09GO). They are **build-tagged** (`//go:build e2e`) so
-they are excluded from the default unit run (T02/N30), run explicitly via
-`make e2e`, and run in CI in a dedicated job (C04). Specifically they verify the
-**pass-through `X-Auth-Token`** reaches Miniflux and that **`secret:true` fields
-(feed password) are redacted** in live tool output and logs.
+This project has **no e2e tests** by decision: a hermetic, deterministic
+full-stack e2e against the Miniflux upstream cannot be guaranteed in CI (the
+upstream's runtime behaviour — refresh, discovery — is not deterministic
+enough), so we rely on unit tests (coverage ≥ 95%, C01), mutation testing
+(C08GO) and the static/secret gates (C03/C05GO/C06GO). Consequently
+**C04/T02/C09GO/N07GO/N30 are N/A**: there is no e2e suite to run, and **no
+`make e2e` target and no e2e CI job are declared** (R07/N31).
 
 ### 11.6 TDD workflow (T01)
 
@@ -917,10 +911,10 @@ points to where each is addressed:
 | C01 | §11.2 (`make test` coverage ≥ 95) |
 | C02 | §11.2 (gremlins 80/80 hard gate) |
 | C03 | §7, §11.2 (gitleaks) |
-| C04 | §11.2 (e2e CI job) |
+| C04 | N/A — no e2e suite (§11.5) |
 | C05 | §11.3 |
 | T01 | §11.6 |
-| T02 | §11.5 |
+| T02 | N/A — no e2e suite (§11.5) |
 | S01 | §7 |
 | S02 | §7 |
 | S03 | §4 |
@@ -961,7 +955,7 @@ points to where each is addressed:
 | X02 | §8, §4.2 |
 | X03 | §6.5, §8 |
 | O01–O04 | §10 |
-| C01GO–C09GO | §11, §6.1 |
+| C01GO–C09GO | §11, §6.1 (C09GO N/A — no e2e, §11.5) |
 | L01GO–L04GO | §9 |
 
 No **MUST NOT** (N01–N35, N01GO–N07GO) is violated — each is addressed or

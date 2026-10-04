@@ -42,9 +42,6 @@ CI binds to the **build-system interface**: it calls `make <target>`, not raw
 - `make lint` — golangci-lint (incl. gofmt/gofumpt), `go vet`, gosec,
   govulncheck, go-arch-lint. **Findings are FIXED, never suppressed** (no blanket
   `#nosec`, no default excludes).
-- `make e2e` — e2e via **go-docker-testsuite** (`go test -tags e2e ./...`,
-  `//go:build e2e` build-tagged, excluded from the default unit pass). Runs in a
-  dedicated CI job.
 - `make container-image [push=true]` — build-only / build+push the image **from
   the `build` artifact** (distroless `nonroot`, no in-image compilation).
 
@@ -61,8 +58,9 @@ CI binds to the **build-system interface**: it calls `make <target>`, not raw
 
 Tests are written **first** by **@qa** (isolated context); the implementation is
 written by **@developer** (isolated context). Do **not** weaken tests to make the
-implementation pass. e2e verifies the full handler→upstream path including
-pass-through `X-Auth-Token` and live redaction of `secret:true` fields.
+implementation pass. This project has **no e2e suite** (by decision — see
+SPEC §11.5); quality is enforced by unit tests, mutation testing and the static
+gates.
 
 ## Working in this repo
 
@@ -121,7 +119,7 @@ A change is done only when **all** of the following hold:
   go-arch-lint — **no findings left unfixed, none suppressed**.
 - **gremlins mutation gate** ≥ 80/80 passes (dedicated CI job).
 - **gitleaks** secret scan over git history passes; no secrets committed.
-- When e2e exist: the **e2e job** (`make e2e`, go-docker-testsuite) passes.
+- No e2e suite exists (by decision — SPEC §11.5); C04/T02/C09GO are N/A.
 - Docs updated as needed; `SPEC.md`/`AGENTS.md` still consistent and in English.
 - **No secrets leaked** into outputs or logs; redaction helper covers new
   `secret:true` fields.

@@ -72,7 +72,6 @@ Pinned versions (single source of truth: `reference/versions.md`):
 | prometheus/client_golang | **v1.24.1** |
 | sirupsen/logrus | **v1.10.2** |
 | kelseyhightower/envconfig | **v1.4.0** |
-| go-docker-testsuite (e2e harness) | latest |
 
 ## Install & Run
 
@@ -225,11 +224,6 @@ CI binds to the build-system interface (`make <target>`) and enforces:
   (fails the build below 80%; no placeholder/continue-on-error).
 - **gitleaks** secret scan over git history (findings fixed).
 - `make build` — goreleaser → single binary per platform into `dist/`.
-- `make e2e` — e2e via the **go-docker-testsuite** harness (`go test -tags e2e
-  ./...`), which spins up a real Miniflux instance and verifies the full path:
-  tool handler → MCP request → upstream call → structured response →
-  `outputSchema` conformance → **`X-Auth-Token` pass-through** and **`secret:true`
-  redaction in a live flow**.
 - `make container-image` / `make container-image push=true` — build / build+push
   the container image **from the `make build` artifact** (distroless `nonroot`;
   no in-image compilation).
@@ -238,7 +232,6 @@ CI binds to the build-system interface (`make <target>`) and enforces:
 make lint
 make test
 make build
-make e2e                 # needs a running Docker daemon (optional locally)
 make container-image push=true
 ```
 
