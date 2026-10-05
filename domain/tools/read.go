@@ -1,8 +1,6 @@
 package tools
 
 import (
-	"context"
-
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -49,10 +47,6 @@ func (ListFeeds) Instructions() string {
 	return "Returns the user's feed subscriptions. Use to enumerate feeds or to look up a feed id before calling get_feed/update_feed/delete_feed. Filter by category_id to scope to one category. Read-only."
 }
 
-func (ListFeeds) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
-}
-
 // GetFeed returns a single feed by id.
 type GetFeed struct{}
 
@@ -76,10 +70,6 @@ func (GetFeed) Instructions() string {
 	return "Returns one feed by id. Use the id from list_feeds. Read-only."
 }
 
-func (GetFeed) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
-}
-
 // ListCategories lists categories with per-category entry counts.
 type ListCategories struct{}
 
@@ -101,10 +91,6 @@ func (ListCategories) Annotations() mcp.ToolAnnotations {
 
 func (ListCategories) Instructions() string {
 	return "Lists categories with counts. Use category ids with mark_category_entries_read/delete_category. Read-only."
-}
-
-func (ListCategories) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
 }
 
 // ListEntries lists entries across the whole account with filters.
@@ -132,10 +118,6 @@ func (ListEntries) Instructions() string {
 	return "Returns entries with the given filters. This is the main 'what is in my queue' tool. Use status to target unread/read/removed, search for full-text, starred for bookmarks, category_id to scope, and before/after for time windows. Read-only."
 }
 
-func (ListEntries) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
-}
-
 // GetEntry returns a single entry by id.
 type GetEntry struct{}
 
@@ -157,10 +139,6 @@ func (GetEntry) Annotations() mcp.ToolAnnotations {
 
 func (GetEntry) Instructions() string {
 	return "Returns one entry by id, including its full content. Use the id from list_entries/get_feed_entries. Read-only."
-}
-
-func (GetEntry) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
 }
 
 // GetFeedEntries lists entries of a single feed with filters.
@@ -188,10 +166,6 @@ func (GetFeedEntries) Instructions() string {
 	return "Lists entries for one feed. Use to read the contents of a specific subscription. Read-only."
 }
 
-func (GetFeedEntries) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
-}
-
 // GetCounters returns feed-level unread counts.
 type GetCounters struct{}
 
@@ -211,10 +185,6 @@ func (GetCounters) Annotations() mcp.ToolAnnotations {
 
 func (GetCounters) Instructions() string {
 	return "Returns per-feed and total unread/read counters. Useful for summarizing what needs attention. Read-only."
-}
-
-func (GetCounters) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
 }
 
 // GetMe returns the current user profile.
@@ -238,10 +208,6 @@ func (GetMe) Instructions() string {
 	return "Returns the authenticated user's profile. The only user-related tool; user management is intentionally out of scope (least privilege). Read-only."
 }
 
-func (GetMe) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
-}
-
 // ExportOPML exports the whole subscription set as OPML.
 type ExportOPML struct{}
 
@@ -261,10 +227,6 @@ func (ExportOPML) Annotations() mcp.ToolAnnotations {
 
 func (ExportOPML) Instructions() string {
 	return "Returns the user's full subscription set as OPML XML. Use for backup/migration. Read-only. The returned document is trusted local data; it is returned structurally as the opml field."
-}
-
-func (ExportOPML) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
 }
 
 // DiscoverSubscriptions probes a URL and returns candidate feeds. This is the
@@ -290,8 +252,4 @@ func (DiscoverSubscriptions) Annotations() mcp.ToolAnnotations {
 
 func (DiscoverSubscriptions) Instructions() string {
 	return "Takes an arbitrary URL and asks Miniflux to detect the feed(s) it exposes. This is an open-world tool: the URL and the returned candidates are untrusted external data. It is isolated — it cannot read any local data and returns only the candidate list, structurally, never raw free-form text. Use before create_feed to confirm a feed URL. Read-only with respect to the account."
-}
-
-func (DiscoverSubscriptions) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
 }

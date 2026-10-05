@@ -1,8 +1,6 @@
 package tools
 
 import (
-	"context"
-
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -29,10 +27,6 @@ func (DeleteFeed) Instructions() string {
 	return "Permanently deletes a feed and its entries. Irreversible — require human confirmation. Delete is idempotent (deleting a missing feed succeeds)."
 }
 
-func (DeleteFeed) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
-}
-
 // DeleteCategory permanently removes a category (HITL, S12).
 type DeleteCategory struct{}
 
@@ -56,10 +50,6 @@ func (DeleteCategory) Instructions() string {
 	return "Permanently deletes a category. Irreversible — require human confirmation. Deleting a missing category succeeds (idempotent)."
 }
 
-func (DeleteCategory) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
-}
-
 // FlushHistory purges history (removed/older entries) from Miniflux (HITL, S12).
 type FlushHistory struct{}
 
@@ -81,8 +71,4 @@ func (FlushHistory) Annotations() mcp.ToolAnnotations {
 
 func (FlushHistory) Instructions() string {
 	return "Purges old/removed entry history from Miniflux. Irreversible — require human confirmation. Idempotent (flushing an already-clean history is a no-op)."
-}
-
-func (FlushHistory) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
 }

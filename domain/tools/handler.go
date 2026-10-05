@@ -1,35 +1,24 @@
 // Package tools declares the MCP tool surface (SPEC §4, §6.2; S02/S03/S08/S09/
 // S12). Each tool is a struct implementing the Handler interface; the zero value
 // exposes all definition methods (Name/InputSchema/OutputSchema/Annotations/
-// Instructions) without any injected dependency. The upstream work happens in
-// the application layer; the Call method here is a stub returning
-// errNotImplemented.
+// Instructions) without any injected dependency. Execution lives in the
+// application layer (application/handlers); this package is definition-only.
 package tools
 
 import (
-	"context"
-	"errors"
-
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Result is an alias for the go-sdk call result type returned by Call.
-type Result = *mcp.CallToolResult
-
-// Handler is the common interface every tool implements (SPEC §6.2, adapted to
-// the real go-sdk v1.8.0 *mcp.CallToolResult type).
+// Handler is the common interface every tool implements (SPEC §6.2). It exposes
+// only the definition surface (name, schemas, annotations, instructions);
+// execution is wired in the application layer via the dmf.Client port.
 type Handler interface {
 	Name() string
 	InputSchema() *map[string]any
 	OutputSchema() *map[string]any
 	Annotations() mcp.ToolAnnotations
 	Instructions() string
-	Call(ctx context.Context, args map[string]any) (Result, error)
 }
-
-// errNotImplemented is returned by the Call stub. Real execution is implemented
-// by the application-layer handlers that wrap these tool definitions.
-var errNotImplemented = errors.New("tool execution is handled in the application layer")
 
 // ptrBool returns a pointer to b.
 func ptrBool(b bool) *bool { return &b }

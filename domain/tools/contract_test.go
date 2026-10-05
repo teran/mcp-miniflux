@@ -8,7 +8,8 @@ import (
 //
 // The developer must define a `Handler` interface and one concrete struct per
 // tool below. This test file is written FIRST (TDD, red state) and will not
-// compile until they exist. Exact contract:
+// compile until they exist. Exact contract (definition-only; execution is wired
+// in the application layer via the dmf.Client port):
 //
 //	type Handler interface {
 //		Name() string
@@ -16,15 +17,7 @@ import (
 //		OutputSchema() *map[string]any
 //		Annotations() mcp.ToolAnnotations
 //		Instructions() string
-//		Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error)
 //	}
-//
-// ADAPTATION note (documented): SPEC §6.2 names the last method
-// `Call(ctx, args) (Result, error)` with an application-layer `Result`. Here we
-// adapt to the REAL go-sdk v1.8.0 type `*mcp.CallToolResult` so the contract is
-// concrete and compiles against the SDK. If the developer prefers a named
-// `Result` alias, they may define `type Result = *mcp.CallToolResult` and keep
-// this signature; either way Call must return an error-capable result type.
 //
 // The concrete tool structs (zero value must expose all definition methods —
 // Name/InputSchema/OutputSchema/Annotations/Instructions — without any

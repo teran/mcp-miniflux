@@ -1,8 +1,6 @@
 package tools
 
 import (
-	"context"
-
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -32,10 +30,6 @@ func (CreateFeed) Annotations() mcp.ToolAnnotations {
 
 func (CreateFeed) Instructions() string {
 	return "Subscribes to the feed at feed_url. Idempotent: the server first searches existing feeds by URL; if the feed already exists it returns the existing feed instead of creating a duplicate. Safe to retry. Use discover_subscriptions first to confirm the URL. Optional HTTP credentials are passed to Miniflux and never returned/logged."
-}
-
-func (CreateFeed) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
 }
 
 // UpdateFeed updates a feed's metadata/credentials.
@@ -71,10 +65,6 @@ func (UpdateFeed) Instructions() string {
 	return "Updates an existing feed's settings. Only the provided fields are changed. Setting fields to explicit values is idempotent. Does not delete."
 }
 
-func (UpdateFeed) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
-}
-
 // RefreshFeed forces a refresh of one feed.
 type RefreshFeed struct{}
 
@@ -97,10 +87,6 @@ func (RefreshFeed) Instructions() string {
 	return "Triggers Miniflux to refresh this feed's entries. Repeated refresh is idempotent (Miniflux coalesces refreshes)."
 }
 
-func (RefreshFeed) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
-}
-
 // CreateCategory creates a category (idempotent via search-before-create by title).
 type CreateCategory struct{}
 
@@ -121,10 +107,6 @@ func (CreateCategory) Annotations() mcp.ToolAnnotations {
 
 func (CreateCategory) Instructions() string {
 	return "Creates a category with the given title. Idempotent: the handler first checks for an existing category with the same title and returns it instead of creating a duplicate. Safe to retry."
-}
-
-func (CreateCategory) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
 }
 
 // UpdateCategory renames/reparents a category.
@@ -152,10 +134,6 @@ func (UpdateCategory) Instructions() string {
 	return "Updates a category's title. Setting a title is idempotent."
 }
 
-func (UpdateCategory) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
-}
-
 // RefreshCategory forces refresh of all feeds in a category.
 type RefreshCategory struct{}
 
@@ -176,10 +154,6 @@ func (RefreshCategory) Annotations() mcp.ToolAnnotations {
 
 func (RefreshCategory) Instructions() string {
 	return "Triggers a refresh of every feed in the category. Idempotent."
-}
-
-func (RefreshCategory) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
 }
 
 // MarkFeedEntriesRead marks all entries of a feed as read.
@@ -204,10 +178,6 @@ func (MarkFeedEntriesRead) Instructions() string {
 	return "Marks every entry in the feed as read. Setting read-state is idempotent — safe to retry."
 }
 
-func (MarkFeedEntriesRead) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
-}
-
 // MarkCategoryEntriesRead marks all entries of a category as read.
 type MarkCategoryEntriesRead struct{}
 
@@ -228,10 +198,6 @@ func (MarkCategoryEntriesRead) Annotations() mcp.ToolAnnotations {
 
 func (MarkCategoryEntriesRead) Instructions() string {
 	return "Marks every entry in the category as read. Idempotent."
-}
-
-func (MarkCategoryEntriesRead) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
 }
 
 // UpdateEntries bulk-sets status/starred on a set of entries.
@@ -260,10 +226,6 @@ func (UpdateEntries) Instructions() string {
 	return "Bulk-applies a status and/or starred flag to the given entry ids. Setting state to explicit values is idempotent. Prefer this over per-entry calls for batch operations."
 }
 
-func (UpdateEntries) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
-}
-
 // ToggleEntryBookmark toggles the starred/bookmark state of one entry. NOT
 // idempotent (X02/N25).
 type ToggleEntryBookmark struct{}
@@ -285,10 +247,6 @@ func (ToggleEntryBookmark) Annotations() mcp.ToolAnnotations {
 
 func (ToggleEntryBookmark) Instructions() string {
 	return "Flips the starred state of one entry. Not idempotent — each call toggles state, so calling twice returns it to the original value. Use update_entries with an explicit starred value when you want to set (not toggle) state."
-}
-
-func (ToggleEntryBookmark) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
 }
 
 // UpdateEntry updates an entry's title/content.
@@ -318,10 +276,6 @@ func (UpdateEntry) Instructions() string {
 	return "Updates an entry's title/content/url. Setting fields to values is idempotent. Does not change read/starred state."
 }
 
-func (UpdateEntry) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
-}
-
 // ImportOPML imports subscriptions from an OPML document.
 type ImportOPML struct{}
 
@@ -342,8 +296,4 @@ func (ImportOPML) Annotations() mcp.ToolAnnotations {
 
 func (ImportOPML) Instructions() string {
 	return "Imports feed subscriptions from OPML. Idempotent: Miniflux returns 200 for feeds that already exist, so re-importing the same OPML does not create duplicates. The document is sent to Miniflux and not stored locally."
-}
-
-func (ImportOPML) Call(ctx context.Context, args map[string]any) (Result, error) {
-	return nil, errNotImplemented
 }
