@@ -110,7 +110,11 @@ jobs:
           fetch-depth: 0
       - name: Install gitleaks
         run: |
-          go install github.com/gitleaks/gitleaks/v8@${{ env.GITLEAKS_VERSION }}
+          # The gitleaks module path is still github.com/zricethezav/gitleaks/v8
+          # (the go.mod declares the legacy owner path even though the repo moved
+          # to github.com/gitleaks/gitleaks), so installing via the newer path
+          # fails with a version-constraints conflict (C03/N28).
+          go install github.com/zricethezav/gitleaks/v8@${{ env.GITLEAKS_VERSION }}
       - name: Run gitleaks detect
         run: gitleaks detect --source . --redact --verbose
 
