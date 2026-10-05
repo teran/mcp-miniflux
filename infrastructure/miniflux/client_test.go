@@ -89,6 +89,9 @@ import (
 
 	dmf "github.com/teran/mcp-miniflux/domain/miniflux"
 	"github.com/teran/mcp-miniflux/domain/requestid"
+
+	"github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus/hooks/test"
 )
 
 const (
@@ -713,5 +716,45 @@ func TestFlushHistoryWithBefore(t *testing.T) {
 	_, _, q, _, _, _ := cap.snapshot()
 	if !strings.Contains(q, "before=2026-01-01T00%3A00%3A00Z") {
 		t.Errorf("query %q missing before param", q)
+	}
+}
+
+// CONFORM-AUDIT [L09/L04GO] — every outbound Miniflux request must be logged
+// with the request_id correlation id (threaded from ctx, propagated as
+// X-Request-ID) and must NOT leak the auth token / secrets. This locks a new
+// option `WithLogger(l *logrus.Logger)` on the client that emits an outbound
+// request log carrying the request_id field.
+func TestOutboundRequestLoggedWithRequestIDNoSecret(t *testing.T) {
+	srv, _ := startServer(t, okFeeds)
+
+	l := logrus.New()
+	l.SetLevel(logrus.DebugLevel)
+	hook := &test.Hook{}
+	l.AddHook(hook)
+
+	c := newTestClient(t, srv.URL, WithLogger(l))
+	ctx := requestid.WithRequestID(context.Background(), "req-correl-1")
+
+	if _, err := c.ListFeeds(ctx, nil, 0, 0); err != nil {
+		t.Fatalf("ListFeeds: %v", err)
+	}
+
+	found := false
+	for _, e := range hook.AllEntries() {
+		if id, ok := e.Data["request_id"].(string); ok && id == "req-correl-1" {
+			found = true
+			// The resolved token must never appear in the log record (L05).
+			if strings.Contains(e.Message, testDefaultToken) || strings.Contains(e.Message, testInboundToken) {
+				t.Errorf("outbound request log leaks the auth token: %q", e.Message)
+			}
+			for k := range e.Data {
+				if strings.EqualFold(k, "token") || strings.EqualFold(k, "password") {
+					t.Errorf("outbound request log leaks secret field %q", k)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Errorf("no outbound request log entry with request_id req-correl-1 (L09/L04GO)")
 	}
 }

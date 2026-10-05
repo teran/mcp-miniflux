@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"context"
 	"io"
 	"net"
 	"net/http"
@@ -138,6 +139,57 @@ func TestStartObservabilityServerBindAndShutdown(t *testing.T) {
 
 	if err := srv.Shutdown(nil); err != nil {
 		t.Fatalf("Shutdown: %v", err)
+	}
+}
+
+// CONFORM-AUDIT [O01] — the observability *http.Server must be shut down
+// gracefully when the process context is cancelled (SIGTERM/SIGINT). The
+// composition root needs a helper that runs the observability listener and, on
+// ctx cancellation, calls http.Server.Shutdown and returns. This locks the
+// contract:
+//
+//	func RunObservabilityServer(ctx context.Context, addr string, log *logrus.Logger) error
+//
+// It must start serving on addr (metrics + pprof + probes), block until ctx is
+// cancelled, then gracefully shut the http.Server down and return nil.
+func TestRunObservabilityServerGracefulShutdown(t *testing.T) {
+	addr := freeAddr(t)
+	log := logrus.New()
+	log.SetOutput(io.Discard)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- RunObservabilityServer(ctx, addr, log) }()
+
+	// Wait until the listener actually serves.
+	base := "http://" + addr
+	deadline := time.Now().Add(3 * time.Second)
+	up := false
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(base + "/healthz")
+		if err == nil {
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				up = true
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !up {
+		t.Fatalf("observability server never became ready on %s", addr)
+	}
+
+	cancel() // simulate SIGTERM/SIGINT
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("RunObservabilityServer returned error on graceful shutdown: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("RunObservabilityServer did not return after ctx cancel — observability server not shut down (O01)")
 	}
 }
 

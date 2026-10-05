@@ -8,8 +8,18 @@
 # reverse proxy terminates TLS), logs to stdout (L01).
 
 # Stage 1 — artifact holder: the release binary from the build context.
-# goreleaser emits dist/mcp-server_linux_<arch>_<vN>/mcp-server (arch-version
-# suffix differs per arch), so the source is matched with a wildcard.
+# goreleaser emits dist/mcp-server_linux_<arch>_<vN>/mcp-server (the trailing
+# version-suffixed directory — e.g. `..._amd64_v1/`, `..._arm64_v1/` — comes
+# from goreleaser's per-build id/version suffix, and differs per arch), so the
+# source is matched with a wildcard.
+# NOTE (B04): this wildcard is FRAGILE — it implicitly depends on goreleaser's
+# versioned artifact-suffix scheme (dist/mcp-server_linux_${TARGETARCH}_*/).
+# If a goreleaser upgrade changes the directory suffix pattern, or the build id
+# in .goreleaser.yml gains a different version marker, this COPY will silently
+# fail to find the binary. If it ever breaks, either fix the wildcard to match
+# the new suffix or pin a stable artifact path via a fixed goreleaser
+# `name_template`/`builds[].binary` layout (the OCI image tag scheme R03/R04 is
+# unchanged). Keep the source matched here in sync with `.goreleaser.yml`.
 FROM scratch AS artifact
 ARG TARGETARCH
 COPY dist/mcp-server_linux_${TARGETARCH}_*/mcp-server /app/mcp-server

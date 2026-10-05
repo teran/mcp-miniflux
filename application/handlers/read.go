@@ -193,7 +193,7 @@ func (h DiscoverSubscriptionsHandler) Call(ctx context.Context, args map[string]
 		return nil, err
 	}
 	return &mcp.CallToolResult{
-		Content:           []mcp.Content{&mcp.TextContent{Text: string(data)}},
+		Content:           []mcp.Content{textContent(string(data))},
 		StructuredContent: redacted,
 	}, nil
 }

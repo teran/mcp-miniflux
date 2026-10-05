@@ -240,7 +240,22 @@ func (DiscoverSubscriptions) InputSchema() *map[string]any {
 	return objectSchema(map[string]any{"url": stringProp()}, []string{"url"})
 }
 
-func (DiscoverSubscriptions) OutputSchema() *map[string]any { return outputSchema() }
+func (DiscoverSubscriptions) OutputSchema() *map[string]any {
+	candidate := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"url":   stringProp(),
+			"title": stringProp(),
+			"type":  stringProp(),
+		},
+	}
+	return objectSchema(map[string]any{
+		"feeds": map[string]any{
+			"type":  "array",
+			"items": candidate,
+		},
+	}, nil)
+}
 
 func (DiscoverSubscriptions) Annotations() mcp.ToolAnnotations {
 	return mcp.ToolAnnotations{

@@ -112,6 +112,7 @@ var secretKeySet = map[string]struct{}{
 	"token":     {},
 	"apikey":    {},
 	"api_token": {},
+	"username":  {},
 }
 
 // RedactMap returns a deep copy of m in which every key whose lowercased name

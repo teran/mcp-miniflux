@@ -233,8 +233,9 @@ func TestRequiredFields(t *testing.T) {
 		"update_entries":             {"entry_ids"},
 		"toggle_entry_bookmark":      {"entry_id"},
 		"update_entry":               {"entry_id"},
-		"delete_feed":                {"feed_id"},
-		"delete_category":            {"category_id"},
+		"delete_feed":                {"feed_id", "confirm"},
+		"delete_category":            {"category_id", "confirm"},
+		"flush_history":              {"confirm"},
 	}
 
 	for _, h := range allTools() {
@@ -290,6 +291,74 @@ func TestCreateFeedHasSecretPassword(t *testing.T) {
 	}
 	if _, ok := props["feed_url"]; !ok {
 		t.Errorf("create_feed: inputSchema must declare feed_url")
+	}
+}
+
+// CONFORM-AUDIT [S08/S12] — Destructive tools MUST require an explicit
+// `confirm:true` (HITL) as a first-class input: `confirm` must be a boolean
+// property AND listed in `required` for delete_feed/delete_category/
+// flush_history. Without it a caller can delete without human confirmation.
+func TestDestructiveToolsRequireConfirm(t *testing.T) {
+	for _, h := range []Handler{&DeleteFeed{}, &DeleteCategory{}, &FlushHistory{}} {
+		name := h.Name()
+		m := *(h.InputSchema())
+		props, ok := m["properties"].(map[string]any)
+		if !ok {
+			t.Errorf("%s: inputSchema properties missing", name)
+			continue
+		}
+		confirm, ok := props["confirm"].(map[string]any)
+		if !ok {
+			t.Errorf("%s: inputSchema must declare a boolean confirm property (S12)", name)
+			continue
+		}
+		if confirm["type"] != "boolean" {
+			t.Errorf("%s: confirm.type = %v, want boolean (S12)", name, confirm["type"])
+		}
+		required := toStringSet(m["required"])
+		if !required["confirm"] {
+			t.Errorf("%s: confirm must be in inputSchema required (S12); required=%v", name, m["required"])
+		}
+	}
+}
+
+// CONFORM-AUDIT [S09/M07] — discover_subscriptions is the single open-world
+// tool (S07/S10) whose output is untrusted external data. Its OutputSchema must
+// be TYPED as a structured candidate list (feeds[] with url/title/type) rather
+// than the generic empty-object schema, so clients receive candidates
+// structurally and never raw free-form text.
+func TestDiscoverOutputSchemaTyped(t *testing.T) {
+	m := *(new(DiscoverSubscriptions).OutputSchema())
+	if m["type"] != "object" {
+		t.Errorf("discover outputSchema type = %v, want object", m["type"])
+	}
+	props, ok := m["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("discover outputSchema must declare properties with a feeds array (M07): %v", m)
+	}
+	feeds, ok := props["feeds"].(map[string]any)
+	if !ok {
+		t.Fatalf("discover outputSchema must declare a feeds property (M07): %v", props)
+	}
+	if feeds["type"] != "array" {
+		t.Errorf("discover outputSchema.feeds.type = %v, want array", feeds["type"])
+	}
+	items, ok := feeds["items"].(map[string]any)
+	if !ok {
+		t.Fatalf("discover outputSchema.feeds.items missing (M07): %v", feeds)
+	}
+	if items["type"] != "object" {
+		t.Errorf("discover outputSchema.feeds.items.type = %v, want object", items["type"])
+	}
+	itemProps, ok := items["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("discover outputSchema.feeds.items.properties missing (M07): %v", items)
+	}
+	for _, field := range []string{"url", "title", "type"} {
+		fp, ok := itemProps[field].(map[string]any)
+		if !ok || fp["type"] != "string" {
+			t.Errorf("discover candidate field %q must be a string property (M07): %v", field, itemProps[field])
+		}
 	}
 }
 

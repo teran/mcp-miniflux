@@ -14,6 +14,7 @@ import (
 	dmf "github.com/teran/mcp-miniflux/domain/miniflux"
 	"github.com/teran/mcp-miniflux/domain/requestid"
 
+	"github.com/sirupsen/logrus"
 	"resty.dev/v3"
 )
 
@@ -72,6 +73,7 @@ type clientConfig struct {
 	httpClient   *http.Client
 	defaultToken string
 	metrics      MetricsRecorder
+	logger       *logrus.Logger
 	timeout      time.Duration
 }
 
@@ -122,6 +124,17 @@ func WithDefaultToken(token string) Option {
 func WithMetrics(r MetricsRecorder) Option {
 	return func(c *clientConfig) error {
 		c.metrics = r
+		return nil
+	}
+}
+
+// WithLogger wires a logrus logger used to emit a per-request outbound access
+// log (L09/L04GO). Each record carries the request_id threaded through ctx (and
+// propagated to Miniflux as X-Request-ID) and never contains the auth token or
+// other secrets (L05).
+func WithLogger(l *logrus.Logger) Option {
+	return func(c *clientConfig) error {
+		c.logger = l
 		return nil
 	}
 }
@@ -199,6 +212,12 @@ func (c *Client) execute(ctx context.Context, r *resty.Request, method, url stri
 	resp, err := r.Execute(method, url)
 	dur := time.Since(start)
 
+	status := 0
+	if resp != nil {
+		status = resp.StatusCode()
+	}
+	c.logOutbound(ctx, method, url, status, dur)
+
 	if err != nil {
 		c.observe(0, dur, 0, 0)
 		return resp, &APIError{Kind: ErrorTransient, Status: 0, Message: err.Error()}
@@ -226,6 +245,21 @@ func (c *Client) observe(statusCode int, dur time.Duration, bytesIn, bytesOut in
 	if c.cfg.metrics != nil {
 		c.cfg.metrics.ObserveUpstream(statusCode, dur, bytesIn, bytesOut)
 	}
+}
+
+// logOutbound emits a per-request outbound access log (L09/L04GO) carrying the
+// request_id correlation id. The message and fields contain only method/path/
+// status/duration — never the auth token or any secret (L05).
+func (c *Client) logOutbound(ctx context.Context, method, path string, status int, dur time.Duration) {
+	if c.cfg.logger == nil {
+		return
+	}
+	c.cfg.logger.WithField("request_id", requestid.RequestIDFromContext(ctx)).WithFields(logrus.Fields{
+		"method":   method,
+		"path":     path,
+		"status":   status,
+		"duration": dur.Milliseconds(),
+	}).Info("miniflux outbound request")
 }
 
 // classifyStatus maps an HTTP status to the §6.5 taxonomy. 2xx -> nil (no

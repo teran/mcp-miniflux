@@ -427,7 +427,7 @@ sequences before returning text to the client.
 > All are `destructiveHint: true`.
 
 **`delete_feed`** — permanently remove a feed subscription.
-- Inputs: `feed_id` (`int`, required).
+- Inputs: `feed_id` (`int`, required); `confirm` (`bool`, required — HITL).
 - Outputs: `ok` (`bool`).
 - Annotations: `title` "Delete feed", `readOnlyHint:false`,
   `destructiveHint:true`, `idempotentHint:true` (deleting an already-deleted
@@ -438,7 +438,7 @@ sequences before returning text to the client.
 - Upstream: `DELETE /v1/feeds/{feedID}`.
 
 **`delete_category`** — permanently remove a category.
-- Inputs: `category_id` (`int`, required).
+- Inputs: `category_id` (`int`, required); `confirm` (`bool`, required — HITL).
 - Outputs: `ok` (`bool`).
 - Annotations: `title` "Delete category", `readOnlyHint:false`,
   `destructiveHint:true`, `idempotentHint:true`.
@@ -447,7 +447,8 @@ sequences before returning text to the client.
 - Upstream: `DELETE /v1/categories/{id}`.
 
 **`flush_history`** — purge history (removed/older entries) from Miniflux.
-- Inputs: none (optionally `before` RFC 3339 timestamp).
+- Inputs: `confirm` (`bool`, required — HITL); optionally `before` RFC 3339
+  timestamp.
 - Outputs: `ok` (`bool`).
 - Annotations: `title` "Flush history", `readOnlyHint:false`,
   `destructiveHint:true`, `idempotentHint:true`.
@@ -825,6 +826,20 @@ mutation (C02/C08GO) and **gitleaks** secret scan (C03/N28).
 - **Release artifacts:** on tags → **goreleaser release** (B01) publishing the
   binary artifacts; then `make container-image push=true` (R01/B03/B04) building
   and pushing the image **from the single release binary** (B04/N18).
+- **Live badge publishing (`badges` job) — documented reporting-only exception
+  (NOT an N31 violation).** The `badges` job re-computes the quality metrics for
+  the README's shields.io/endpoint badges by invoking the underlying tools
+  **directly** (raw `go test`/`go tool cover`, `gosec`, `govulncheck`,
+  `gremlins`) rather than `make <target>`. This is a **deliberate, documented
+  exception to the R07/N31 build-system interface**: the job is **reporting-only**
+  — it recomputes metrics solely to render badge colors, is **gated on the real
+  quality jobs** (`needs: [lint, build, test, mutation, secret-scan]`), pushes
+  **only to the dedicated `badges` branch** (never `master`), and its pass/fail
+  is **never a gate** on the build (it does not gate the pipeline or the release;
+  it is not a required check). Because it is not a gate, invoking raw commands
+  there does not violate N31 (which prohibits CI *gating* on language-specific
+  commands instead of the make interface). The actual quality gates remain the
+  make-bound jobs above.
 
 ### 11.3 Version currency (C05/N33, C01GO)
 
@@ -839,6 +854,7 @@ The project pins **latest-stable** versions (single source of truth
 | prometheus client_golang | **v1.24.1** (O01–O04) |
 | logrus | **v1.10.2** (L01GO) |
 | envconfig | **v1.4.0** (env-driven config) |
+| jsonschema-go | **v0.4.3** (`github.com/google/jsonschema-go`, direct dep — input/output schema generation, S08/S09) |
 
 Staleness is a **defect** at conformance (C05/N33): upgrade/fix, never suppress.
 
@@ -863,6 +879,21 @@ Staleness is a **defect** at conformance (C05/N33): upgrade/fix, never suppress.
 per-platform `COPY` of the release binary via `TARGETARCH` (linux/amd64,
 linux/arm64), `EXPOSE 8080`, `ENTRYPOINT ["/app/mcp-server", "-mode", "http"]`
 — no TLS in-process (N01/S01; reverse proxy terminates), logs to stdout (L01).
+
+**B02 — embedded `appVersion` vs image tag (documented behaviour).** `make
+build` runs **goreleaser snapshot** (`goreleaser build --snapshot`), which
+labels the artifact version as a **snapshot**, not the git tag. The image is
+built **from that snapshot binary** (`make container-image` → `make build`),
+so for an untagged `master` build the binary's embedded `appVersion` is the
+snapshot string while the image carries the `master-{commit}` tag set (R04).
+For a **tagged release**, the intent is that the embedded `appVersion` equals
+the image's git tag `X` (R03): the release job should propagate the tag into
+the build so `goreleaser` embeds `{{ .Version }} == X` (e.g. via
+`GORELEASER_CURRENT_TAG`/a `VERSION` variable passed through `make
+container-image`). Until that wiring is in place, a TODO in the release
+workflow tracks it; the startup banner (§9, B05) therefore reports the
+embedded version, which may lag the image tag on snapshot builds — this is
+expected and not a defect in the binary.
 
 ### 11.5 e2e tests — N/A (T02/C04/C09GO/N07GO)
 
@@ -954,9 +985,64 @@ points to where each is addressed:
 | X01 | §8 |
 | X02 | §8, §4.2 |
 | X03 | §6.5, §8 |
+| X04 | N/A — stateless (§8) |
+| X05 | N/A — stateless (§8) |
 | O01–O04 | §10 |
 | C01GO–C09GO | §11, §6.1 (C09GO N/A — no e2e, §11.5) |
 | L01GO–L04GO | §9 |
 
-No **MUST NOT** (N01–N35, N01GO–N07GO) is violated — each is addressed or
-explicitly N/A above.
+No **MUST NOT** is violated. Each `MUST NOT` (N01–N35, N01GO–N07GO) is either
+addressed (the requirement that would be violated is satisfied elsewhere) or
+explicitly N/A — traced per code below.
+
+**Common MUST NOT (N01–N35):**
+
+| Code | Addressed / N/A |
+|------|-----------------|
+| N01 | §7 (TLS never in-server — S01) |
+| N02 | §7 (no secret leakage — S02) |
+| N03 | §6.4, §7 (N/A — no filesystem — S04) |
+| N04 | §12 (SPEC/AGENTS English — D02) |
+| N05 | §12 (README English — D01) |
+| N06 | §11.2 (coverage ≥ 95 hard gate — C01) |
+| N07 | §6 (application-level architecture — A01) |
+| N08 | §3 (transport/OAuth2 justifications — M02/M03) |
+| N09 | §4 (per-tool annotations + instructions — M04) |
+| N10 | §4.5 (complete use cases — M05) |
+| N11 | §12 (README AI-Generated Content disclaimer — D03) |
+| N12 | §12 (README required badge set — D04) |
+| N13 | §2 (default branch `master` — R02) |
+| N14 | §11.4 (Remote image build via CI/CD — R01) |
+| N15 | §11.2 (mutation testing hard gate — C02) |
+| N16 | §7 (public module path — S06) |
+| N17 | §11.4 (image only for Remote — B03) |
+| N18 | §11.4 (single release binary for image — B04) |
+| N19 | §2 (repo host/path decided before dev — R05) |
+| N20 | §7, §4.1 (open-world structural output — S07) |
+| N21 | §7 (no shell/SQL/URL concatenation — S11) |
+| N22 | §4 (input validation against `inputSchema` — S08/S09) |
+| N23 | §4 (ANSI/control sanitization — S09) |
+| N24 | §8 (state model declared — X01/X04) |
+| N25 | §8, §4.2 (data-level idempotency mechanism — X02) |
+| N26 | §6.5, §8 (no silent retry, error logged — X03) |
+| N27 | §8 (N/A — stateless, no file writes — X05) |
+| N28 | §7, §11.2 (gitleaks over git history — C03) |
+| N29 | §4 (no generic mega-tools — M07) |
+| N30 | N/A — no e2e suite (§11.5) |
+| N31 | §11.1, §11.2 (build-system interface — R07; badges exception documented) |
+| N32 | §10 (observability endpoint always present — O01) |
+| N33 | §11.3 (version currency — C05) |
+| N34 | §7 (supply-chain, Go lower-risk — S13) |
+| N35 | §6.6 (no outbound/upstream request at startup — A02) |
+
+**Go MUST NOT (N01GO–N07GO):**
+
+| Code | Addressed / N/A |
+|------|-----------------|
+| N01GO | §11.3 (latest stable Go pinned — C01GO) |
+| N02GO | §7, §11.2 (scanner findings fixed, not suppressed — C05GO/C06GO) |
+| N03GO | §11.2 (gremlins as a hard gate — C08GO) |
+| N04GO | §9 (logrus; stdio logs to file, not stdout — L01GO) |
+| N05GO | §7, §8 (outbound HTTP via resty v3, no low-level `http.Client` — L02GO) |
+| N06GO | §9 (SDK slog wired into logrus; no secrets in trace lines — L03GO/L08) |
+| N07GO | N/A — no e2e suite (§11.5) |

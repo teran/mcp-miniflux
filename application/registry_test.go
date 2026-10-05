@@ -12,6 +12,7 @@ import (
 
 	"github.com/teran/mcp-miniflux/domain/app"
 	dmf "github.com/teran/mcp-miniflux/domain/miniflux"
+	"github.com/teran/mcp-miniflux/domain/requestid"
 	"github.com/teran/mcp-miniflux/domain/tools"
 )
 
@@ -144,6 +145,68 @@ func TestToolCallHandlerReturnsHandlerError(t *testing.T) {
 	_, err := h(context.Background(), newReq(t, `{}`, ""))
 	if err == nil || err.Error() != "boom" {
 		t.Errorf("expected handler error to propagate, got %v", err)
+	}
+}
+
+// CONFORM-AUDIT [L09] — in stdio mode (or any transport without the HTTP
+// request_id middleware) the context carries no request_id. The toolCallHandler
+// must therefore GENERATE one when absent so every access-log record still
+// carries a correlation id, and must PRESERVE an existing one.
+func TestToolCallHandlerGeneratesRequestIDWhenAbsent(t *testing.T) {
+	var gotID string
+	logger := func(ctx context.Context, _ string, _ map[string]any, _ string, _ time.Duration, _ string) {
+		gotID = requestid.RequestIDFromContext(ctx)
+	}
+	fh := &fakeHandler{}
+	h := toolCallHandler("get_me", fh, logger)
+
+	// Context with NO request_id (stdio path).
+	if _, err := h(context.Background(), newReq(t, `{}`, "")); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if gotID == "" {
+		t.Error("toolCallHandler did not generate a request_id when context lacked one (L09)")
+	}
+}
+
+func TestToolCallHandlerPreservesExistingRequestID(t *testing.T) {
+	var gotID string
+	logger := func(ctx context.Context, _ string, _ map[string]any, _ string, _ time.Duration, _ string) {
+		gotID = requestid.RequestIDFromContext(ctx)
+	}
+	fh := &fakeHandler{}
+	h := toolCallHandler("get_me", fh, logger)
+
+	ctx := requestid.WithRequestID(context.Background(), "existing-7")
+	if _, err := h(ctx, newReq(t, `{}`, "")); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if gotID != "existing-7" {
+		t.Errorf("request_id = %q, want preserved existing-7 (L09)", gotID)
+	}
+}
+
+// CONFORM-AUDIT [L08] — the access-log `source` must be the resolved inbound
+// client IP (X-Real-IP / X-Forwarded-For) rather than a hardcoded constant.
+// This locks the end-to-end wiring: toolCallHandler must call resolveSource on
+// the request headers and pass the result into the access logger.
+func TestToolCallHandlerLogsResolvedSourceFromHeaders(t *testing.T) {
+	var gotSource string
+	logger := func(_ context.Context, _ string, _ map[string]any, source string, _ time.Duration, _ string) {
+		gotSource = source
+	}
+	fh := &fakeHandler{}
+	h := toolCallHandler("get_me", fh, logger)
+
+	req := &mcp.CallToolRequest{
+		Params: &mcp.CallToolParamsRaw{Arguments: json.RawMessage(`{}`)},
+		Extra:  &mcp.RequestExtra{Header: http.Header{"X-Real-IP": []string{"203.0.113.42"}}},
+	}
+	if _, err := h(context.Background(), req); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if gotSource != "203.0.113.42" {
+		t.Errorf("access-log source = %q, want resolved X-Real-IP 203.0.113.42 (L08)", gotSource)
 	}
 }
 

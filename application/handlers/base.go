@@ -218,6 +218,10 @@ func sanitizeText(s string) string {
 			// Control character (other than tab/newline): drop it.
 			i++
 			continue
+		case c == 0x7f:
+			// DEL (0x7f) is a control character: drop it.
+			i++
+			continue
 		default:
 			b.WriteByte(c)
 			i++

@@ -8,6 +8,7 @@
 package observability
 
 import (
+	"context"
 	"net/http"
 	"net/http/pprof"
 	"time"
@@ -58,18 +59,12 @@ func okHandler(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("ok"))
 }
 
-// StartObservabilityServer binds the observability mux (metrics + pprof +
-// probes) to addr (default :8081, O01/O04) and serves it in a background
-// goroutine. It returns the *http.Server so the composition root can shut it
-// down. Metrics/pprof/probes are served here — never on the MCP app listener.
-//
-// O02: the real mux (which holds all routes, including /metrics) is wrapped
-// with promhttp.InstrumentHandler* so the standard Go HTTP request metrics
-// (per-request latency, response size, status-code counter) are collected. The
-// instrumenter vectors are registered with the default registry idempotently
-// so repeated calls (e.g. in tests) do not panic; promhttp.Handler() on
-// /metrics serves the default registry, so they appear on the scrape endpoint.
-func StartObservabilityServer(addr string, log *logrus.Logger) *http.Server {
+// newInstrumentedServer builds the instrumented observability *http.Server
+// bound to addr (O02: real mux wrapped with promhttp.InstrumentHandler* so the
+// standard Go HTTP request metrics are collected). The instrumenter vectors are
+// registered with the default registry idempotently so repeated calls (e.g. in
+// tests) do not panic.
+func newInstrumentedServer(addr string, log *logrus.Logger) *http.Server {
 	requestDuration := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "http_request_duration_seconds",
 		Help: "HTTP request duration in seconds for the observability endpoint.",
@@ -105,15 +100,57 @@ func StartObservabilityServer(addr string, log *logrus.Logger) *http.Server {
 		),
 	)
 
-	srv := &http.Server{
+	return &http.Server{
 		Addr:              addr,
 		Handler:           instrumented,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+}
+
+// StartObservabilityServer binds the observability mux (metrics + pprof +
+// probes) to addr (default :8081, O01/O04) and serves it in a background
+// goroutine. It returns the *http.Server so the composition root can shut it
+// down. Metrics/pprof/probes are served here — never on the MCP app listener.
+//
+// O02: the real mux (which holds all routes, including /metrics) is wrapped
+// with promhttp.InstrumentHandler* so the standard Go HTTP request metrics
+// (per-request latency, response size, status-code counter) are collected.
+func StartObservabilityServer(addr string, log *logrus.Logger) *http.Server {
+	srv := newInstrumentedServer(addr, log)
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Errorf("observability server on %s: %v", addr, err)
 		}
 	}()
 	return srv
+}
+
+// RunObservabilityServer runs the observability listener (metrics + pprof +
+// probes) on addr and blocks until ctx is cancelled, then gracefully shuts the
+// *http.Server down and returns nil (O01: SIGTERM/SIGINT graceful shutdown).
+// If the listener fails to bind or serve, the error is returned.
+func RunObservabilityServer(ctx context.Context, addr string, log *logrus.Logger) error {
+	srv := newInstrumentedServer(addr, log)
+
+	serveErr := make(chan error, 1)
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Errorf("observability server on %s: %v", addr, err)
+			serveErr <- err
+			return
+		}
+		serveErr <- nil
+	}()
+
+	select {
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			return err
+		}
+		return nil
+	case err := <-serveErr:
+		return err
+	}
 }

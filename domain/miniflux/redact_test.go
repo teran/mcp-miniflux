@@ -340,9 +340,9 @@ func TestRedactMapRemovesSecretKeysCaseInsensitive(t *testing.T) {
 }
 
 func TestRedactMapKeepsOtherKeys(t *testing.T) {
-	in := map[string]any{"username": "alice", "secret-note": "x", "passwordX": "not-secret"}
+	in := map[string]any{"secret-note": "x", "passwordX": "not-secret"}
 	out := RedactMap(in)
-	if out["username"] != "alice" || out["secret-note"] != "x" {
+	if out["secret-note"] != "x" {
 		t.Errorf("non-secret keys dropped: %v", out)
 	}
 	// passwordX lowercases to "passwordx" which is NOT in the set -> kept.
@@ -396,6 +396,64 @@ func TestRedactMapRecursesNested(t *testing.T) {
 	// Input not mutated.
 	if in["nested"].(map[string]any)["password"] != "pw" {
 		t.Errorf("RedactMap mutated input")
+	}
+}
+
+// CONFORM-AUDIT [S02] — `username` is a feed HTTP-basic-auth credential
+// (CreateFeedRequest/UpdateFeedRequest carry it as `secret:"true"`). It must
+// therefore be redacted from arbitrary access-log / tool-output maps by
+// RedactMap, exactly like `password`. This test locks that adding "username"
+// (and case variants) to the secret-key set is required.
+//
+// NOTE: this intentionally supersedes the assertion in
+// TestRedactMapKeepsOtherKeys that treated "username" as a non-secret key —
+// the audit classified the feed `username` credential as a secret, so that
+// older expectation is being corrected (the developer must update
+// TestRedactMapKeepsOtherKeys to drop its `username` keep-assertion).
+func TestRedactMapRemovesUsername(t *testing.T) {
+	in := map[string]any{
+		"username": "alice",
+		"Username": "alice2",
+		"USERNAME": "alice3",
+		"title":    "ok",
+	}
+	out := RedactMap(in)
+	for _, k := range []string{"username", "Username", "USERNAME"} {
+		if _, ok := out[k]; ok {
+			t.Errorf("secret key %q not removed: %v (S02)", k, out)
+		}
+	}
+	if out["title"] != "ok" {
+		t.Errorf("non-secret key dropped: %v", out)
+	}
+	if in["username"] != "alice" {
+		t.Errorf("RedactMap mutated input: %v", in)
+	}
+}
+
+// TestRedactMapRecursesUsernameRemoval locks that username is also stripped
+// inside nested maps and slices (the access-log `args` may nest credentials).
+func TestRedactMapRecursesUsernameRemoval(t *testing.T) {
+	in := map[string]any{
+		"creds": map[string]any{"username": "bob", "keep": 1},
+		"list":  []any{map[string]any{"username": "carol", "ok": "x"}},
+	}
+	out := RedactMap(in)
+
+	creds := out["creds"].(map[string]any)
+	if _, ok := creds["username"]; ok {
+		t.Errorf("nested username not removed: %v (S02)", creds)
+	}
+	if creds["keep"] != 1 {
+		t.Errorf("nested non-secret dropped: %v", creds)
+	}
+	list := out["list"].([]any)
+	first := list[0].(map[string]any)
+	if _, ok := first["username"]; ok {
+		t.Errorf("slice-item username not removed: %v (S02)", first)
+	}
+	if first["ok"] != "x" {
+		t.Errorf("slice-item non-secret dropped: %v", first)
 	}
 }
 

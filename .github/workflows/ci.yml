@@ -290,6 +290,14 @@ jobs:
           fi
       # Build + push the image from the `make build` dist/ artifact (B04/N18),
       # tags and master alike — via the make interface (R07/N31).
+      #
+      # TODO (B02): `make container-image` rebuilds via goreleaser snapshot,
+      # so the binary's embedded appVersion is a snapshot string, NOT the git
+      # tag X. For a tagged release (R03) the embedded appVersion should equal
+      # the image tag X. Pass the actual version through to goreleaser here —
+      # e.g. export VERSION=${GITHUB_REF_NAME} (or GORELEASER_CURRENT_TAG) and
+      # have the Makefile forward it to `goreleaser build`/`release` so
+      # {{ .Version }} == X. See SPEC §11.4 (B02 — embedded appVersion vs tag).
       - name: Build and push container image (make container-image push=true)
         run: make container-image push=true
         env:

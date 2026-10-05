@@ -10,7 +10,10 @@ type DeleteFeed struct{}
 func (DeleteFeed) Name() string { return "delete_feed" }
 
 func (DeleteFeed) InputSchema() *map[string]any {
-	return objectSchema(map[string]any{"feed_id": integerProp()}, []string{"feed_id"})
+	return objectSchema(map[string]any{
+		"feed_id": integerProp(),
+		"confirm": booleanProp(),
+	}, []string{"feed_id", "confirm"})
 }
 
 func (DeleteFeed) OutputSchema() *map[string]any { return outputSchema() }
@@ -33,7 +36,10 @@ type DeleteCategory struct{}
 func (DeleteCategory) Name() string { return "delete_category" }
 
 func (DeleteCategory) InputSchema() *map[string]any {
-	return objectSchema(map[string]any{"category_id": integerProp()}, []string{"category_id"})
+	return objectSchema(map[string]any{
+		"category_id": integerProp(),
+		"confirm":     booleanProp(),
+	}, []string{"category_id", "confirm"})
 }
 
 func (DeleteCategory) OutputSchema() *map[string]any { return outputSchema() }
@@ -56,7 +62,10 @@ type FlushHistory struct{}
 func (FlushHistory) Name() string { return "flush_history" }
 
 func (FlushHistory) InputSchema() *map[string]any {
-	return objectSchema(map[string]any{"before": stringProp()}, nil)
+	return objectSchema(map[string]any{
+		"before":  stringProp(),
+		"confirm": booleanProp(),
+	}, []string{"confirm"})
 }
 
 func (FlushHistory) OutputSchema() *map[string]any { return outputSchema() }

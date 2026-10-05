@@ -81,8 +81,13 @@ func run(ctx context.Context, args []string) error {
 	emitBanner(log, appName, appVersion, appCommitHash, appTimestamp)
 
 	// Internal observability endpoint (metrics + pprof + probes) is ALWAYS
-	// present for a Remote server (O01/N32); it runs on its own listener.
-	observability.StartObservabilityServer(cfg.InternalAddr, log)
+	// present for a Remote server (O01/N32); it runs on its own listener and is
+	// shut down gracefully when ctx is cancelled (SIGTERM/SIGINT).
+	go func() {
+		if err := observability.RunObservabilityServer(ctx, cfg.InternalAddr, log); err != nil {
+			log.Errorf("observability server: %v", err)
+		}
+	}()
 
 	// Construct the Miniflux client (A02/N35: this is local wiring only — the
 	// client performs no outbound request at construction).
@@ -93,6 +98,7 @@ func run(ctx context.Context, args []string) error {
 	client, err := miniflux.New(cfg.MinifluxAPIURL,
 		miniflux.WithDefaultToken(cfg.MinifluxAPIToken),
 		miniflux.WithMetrics(upstreamMetrics), // O03 upstream metrics
+		miniflux.WithLogger(log),              // L09/L04GO outbound request log
 		miniflux.WithTimeout(30*time.Second),
 	)
 	if err != nil {

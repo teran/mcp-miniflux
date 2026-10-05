@@ -16,6 +16,7 @@ func TestSanitizeText(t *testing.T) {
 		{"tab preserved", "a\tb", "a\tb"},
 		{"newline preserved", "a\nb", "a\nb"},
 		{"other control stripped", "a\x00b\x01c", "abc"},
+		{"DEL stripped", "a\x7fb", "ab"}, // 0x7f (DEL) is a control char (S09)
 		{"bare ESC stripped", "a\x1bb", "ab"},
 		{"CSI sequence stripped", "a\x1b[31mred\x1b[0mb", "aredb"},
 		{"OSC hyperlink stripped", "a\x1b]8;;http://x\x1b\\link\x1b]8;;\x1b\\b", "alinkb"},

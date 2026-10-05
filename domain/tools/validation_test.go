@@ -113,7 +113,8 @@ func TestValidationAcceptsValidArgs(t *testing.T) {
 		{name: "create_feed with secret password", h: &CreateFeed{}, args: map[string]any{"feed_url": "https://example.com/feed.xml", "username": "u", "password": "p"}},
 		{name: "list_entries defaults", h: &ListEntries{}, args: map[string]any{}},
 		{name: "list_entries filters", h: &ListEntries{}, args: map[string]any{"status": "unread", "limit": 100, "starred": false, "category_id": 3}},
-		{name: "delete_feed", h: &DeleteFeed{}, args: map[string]any{"feed_id": 1}},
+		{name: "delete_feed", h: &DeleteFeed{}, args: map[string]any{"feed_id": 1, "confirm": true}},
+		{name: "flush_history", h: &FlushHistory{}, args: map[string]any{"confirm": true}},
 		{name: "discover_subscriptions", h: &DiscoverSubscriptions{}, args: map[string]any{"url": "https://example.com"}},
 		{name: "update_entries", h: &UpdateEntries{}, args: map[string]any{"entry_ids": []int{1, 2}, "status": "read"}},
 		{name: "toggle_entry_bookmark", h: &ToggleEntryBookmark{}, args: map[string]any{"entry_id": 7}},
@@ -146,7 +147,7 @@ func TestValidationRejectsOutOfRangeLimit(t *testing.T) {
 // argument because additionalProperties:false.
 func TestNoInputToolsRejectAnyArgument(t *testing.T) {
 	noInput := []Handler{
-		&GetMe{}, &GetCounters{}, &ListCategories{}, &ExportOPML{}, &FlushHistory{},
+		&GetMe{}, &GetCounters{}, &ListCategories{}, &ExportOPML{},
 	}
 	for _, h := range noInput {
 		if err := validateArgs(t, h, map[string]any{"foo": "bar"}); err == nil {
