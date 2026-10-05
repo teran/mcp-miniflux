@@ -224,14 +224,19 @@ CI binds to the build-system interface (`make <target>`) and enforces:
   (fails the build below 80%; no placeholder/continue-on-error).
 - **gitleaks** secret scan over git history (findings fixed).
 - `make build` — goreleaser → single binary per platform into `dist/`.
+- `make release` — goreleaser `release --clean` → publish binary artifacts to a
+  GitHub Release (tag runs only).
 - `make container-image` / `make container-image push=true` — build / build+push
   the container image **from the `make build` artifact** (distroless `nonroot`;
-  no in-image compilation).
+  no in-image compilation). CI computes the R03/R04 multi-tag set
+  (`X`, `X-{ts}`, `X-{commit}`, `X-{commit}-{ts}` on tags;
+  `master-{commit}`, `master-{ts}`, `master-{commit}-{ts}` on master).
 
 ```bash
 make lint
 make test
 make build
+make release
 make container-image push=true
 ```
 

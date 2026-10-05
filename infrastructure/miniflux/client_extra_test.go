@@ -346,6 +346,137 @@ func TestUpdateEntriesRequestJSON(t *testing.T) {
 	}
 }
 
+// --- X03/N26: explicit timeout (SPEC §6.5, §8) ---
+
+func TestNewDefaultClientHasTimeout(t *testing.T) {
+	c, err := New("http://127.0.0.1:1")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if c.cfg.httpClient.Timeout <= 0 {
+		t.Errorf("default http.Client.Timeout = %v, want > 0", c.cfg.httpClient.Timeout)
+	}
+}
+
+func TestWithTimeoutOverridesDefault(t *testing.T) {
+	c, err := New("http://127.0.0.1:1", WithTimeout(5*time.Second))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if c.cfg.httpClient.Timeout != 5*time.Second {
+		t.Errorf("http.Client.Timeout = %v, want 5s", c.cfg.httpClient.Timeout)
+	}
+}
+
+func TestWithTimeoutInvalidRejected(t *testing.T) {
+	for _, d := range []time.Duration{0, -1 * time.Second} {
+		if _, err := New("http://127.0.0.1:1", WithTimeout(d)); err == nil {
+			t.Errorf("New with WithTimeout(%v): expected error, got nil", d)
+		}
+	}
+}
+
+func TestWithHTTPClientKeepsOwnTimeout(t *testing.T) {
+	// An injected client carries its own timeout; WithTimeout must NOT clobber it.
+	injected := &http.Client{Timeout: 2 * time.Second, Transport: failingTransport{}}
+	c, err := New("http://127.0.0.1:1", WithHTTPClient(injected), WithTimeout(9*time.Second))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if c.cfg.httpClient.Timeout != 2*time.Second {
+		t.Errorf("http.Client.Timeout = %v, want injected 2s (injected client wins)", c.cfg.httpClient.Timeout)
+	}
+}
+
+// --- S11/N21: Discover URL scheme allowlist (SPEC §7) ---
+
+func TestValidateDiscoverURL(t *testing.T) {
+	valid := []string{
+		"http://example.com",
+		"http://example.com/feed",
+		"https://example.com/feed",
+	}
+	for _, u := range valid {
+		if err := validateDiscoverURL(u); err != nil {
+			t.Errorf("validateDiscoverURL(%q) = %v, want nil", u, err)
+		}
+	}
+
+	invalid := []string{
+		"",
+		"ftp://example.com/feed",
+		"file:///etc/passwd",
+		"javascript:alert(1)",
+		"//example.com/feed", // scheme-less
+		"http://",            // absolute but hostless
+		"http://%zz",         // malformed — url.Parse error
+	}
+	for _, u := range invalid {
+		if err := validateDiscoverURL(u); err == nil {
+			t.Errorf("validateDiscoverURL(%q) = nil, want error", u)
+		}
+	}
+}
+
+func TestDiscoverURLValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		{"valid http", "http://example.com/feed", false},
+		{"valid https", "https://example.com/feed", false},
+		{"ftp rejected", "ftp://example.com/feed", true},
+		{"file rejected", "file:///etc/passwd", true},
+		{"javascript rejected", "javascript:alert(1)", true},
+		{"scheme-less rejected", "//example.com/feed", true},
+		{"empty rejected", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv, cap := startServer(t, func(w http.ResponseWriter, r *http.Request) {
+				io.WriteString(w, `[{"url":"https://example.com/feed.xml","title":"T","type":"rss"}]`)
+			})
+			c := newTestClient(t, srv.URL)
+
+			cands, err := c.Discover(context.Background(), tt.url)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("Discover(%q): expected error, got nil", tt.url)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("Discover(%q): unexpected error: %v", tt.url, err)
+				}
+				if len(cands) != 1 || cands[0].Type != "rss" {
+					t.Errorf("Discover(%q) = %+v", tt.url, cands)
+				}
+			}
+
+			_, _, _, _, body, hits := cap.snapshot()
+			if tt.wantErr && hits != 0 {
+				t.Errorf("Discover(%q): upstream hit %d times, want 0 (invalid URL must not be sent)", tt.url, hits)
+			}
+			if !tt.wantErr && hits != 1 {
+				t.Errorf("Discover(%q): upstream hit %d times, want 1", tt.url, hits)
+			}
+			if !tt.wantErr && !strings.Contains(string(body), tt.url) {
+				t.Errorf("Discover(%q): body = %q, want url present", tt.url, string(body))
+			}
+		})
+	}
+}
+
+func TestDiscoverPropagatesUpstreamError(t *testing.T) {
+	srv, _ := startServer(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "nf", http.StatusNotFound)
+	})
+	c := newTestClient(t, srv.URL)
+
+	_, err := c.Discover(context.Background(), "https://example.com/feed")
+	assertKind(t, err, ErrorNotFound)
+}
+
 func TestTimeFilteredMethods(t *testing.T) {
 	// GetFeedEntries with before/after and FlushHistory with before use
 	// time.Format(RFC3339); exercise the time-based query path end-to-end.

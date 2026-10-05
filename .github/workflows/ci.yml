@@ -111,10 +111,12 @@ jobs:
       - name: Run gitleaks detect
         run: gitleaks detect --source . --redact --verbose
 
-  # Stage 4 — release artifacts (tags only): goreleaser release + push image
+  # Stage 4 — release artifacts (tags + master): binaries on tags, images on
+  # both. goreleaser release runs ONLY on git tags (B01/B04); `make
+  # container-image push=true` runs on tags AND master with the R03/R04 tag sets.
   release:
-    name: Release artifacts
-    if: startsWith(github.ref, 'refs/tags/')
+    name: Release artifacts (tags + master images)
+    if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/master'
     needs: [lint, build, test, mutation, secret-scan]
     runs-on: ubuntu-latest
     permissions:
@@ -138,9 +140,34 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Goreleaser release
-        run: goreleaser release --clean
+      # goreleaser release publishes the binary artifacts to the GitHub Release —
+      # TAG ONLY (B01/B04). Bound to the make interface (R07/N31): make release.
+      - name: Goreleaser release (make release, tag only)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: make release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Derive the R03/R04 multi-tag set from GitHub context (R03/R04).
+      #   tag X    -> IMAGE_TAG=X, EXTRA_TAGS=X-{ts},X-{commit},X-{commit}-{ts}
+      #   master   -> IMAGE_TAG=master-{commit}, EXTRA_TAGS=master-{ts},master-{commit}-{ts}
+      - name: Compute image tag set
+        id: meta
+        shell: bash
+        run: |
+          TS=$(date -u +%Y%m%d%H%M%S)
+          C=${GITHUB_SHA::7}
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAG=${GITHUB_REF_NAME}
+            echo "IMAGE_TAG=${TAG}" >> "$GITHUB_OUTPUT"
+            echo "EXTRA_TAGS=${TAG}-${TS},${TAG}-${C},${TAG}-${C}-${TS}" >> "$GITHUB_OUTPUT"
+          else
+            echo "IMAGE_TAG=master-${C}" >> "$GITHUB_OUTPUT"
+            echo "EXTRA_TAGS=master-${TS},master-${C}-${TS}" >> "$GITHUB_OUTPUT"
+          fi
+      # Build + push the image from the `make build` dist/ artifact (B04/N18),
+      # tags and master alike — via the make interface (R07/N31).
       - name: Build and push container image (make container-image push=true)
         run: make container-image push=true
+        env:
+          IMAGE_TAG: ${{ steps.meta.outputs.IMAGE_TAG }}
+          EXTRA_TAGS: ${{ steps.meta.outputs.EXTRA_TAGS }}

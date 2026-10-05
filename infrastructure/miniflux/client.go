@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -40,6 +42,19 @@ func (e *APIError) Error() string {
 	return e.Message
 }
 
+// ErrorKind returns the §6.5 taxonomy classification of the failure so the
+// application layer can map it to an MCP/JSON-RPC outcome without an
+// application→infrastructure edge (SPEC §6.5).
+func (e *APIError) ErrorKind() dmf.ErrorKind {
+	return dmf.ErrorKind(e.Kind)
+}
+
+// StatusCode returns the upstream HTTP status code (0 for network/timeout
+// errors).
+func (e *APIError) StatusCode() int {
+	return e.Status
+}
+
 // MetricsRecorder receives one observation per upstream call (O03).
 type MetricsRecorder interface {
 	ObserveUpstream(statusCode int, dur time.Duration, bytesIn, bytesOut int64)
@@ -57,19 +72,39 @@ type clientConfig struct {
 	httpClient   *http.Client
 	defaultToken string
 	metrics      MetricsRecorder
+	timeout      time.Duration
 }
+
+// defaultTimeout bounds every upstream call unless overridden by WithTimeout or
+// an injected *http.Client (X03/N26). resty inherits this from the http.Client.
+const defaultTimeout = 30 * time.Second
 
 // Option configures the Client via New.
 type Option func(*clientConfig) error
 
 // WithHTTPClient injects the underlying *http.Client (used to inject a custom
-// transport in tests).
+// transport in tests). An injected client carries its own Timeout, which takes
+// precedence over the default and over WithTimeout (X03/N26).
 func WithHTTPClient(hc *http.Client) Option {
 	return func(c *clientConfig) error {
 		if hc == nil {
 			return errors.New("miniflux: WithHTTPClient requires a non-nil *http.Client")
 		}
 		c.httpClient = hc
+		return nil
+	}
+}
+
+// WithTimeout sets the per-call timeout applied to the default http.Client
+// (X03/N26). It is ignored when an *http.Client is injected via WithHTTPClient,
+// since an injected client owns its own Timeout. A non-positive duration is an
+// error.
+func WithTimeout(d time.Duration) Option {
+	return func(c *clientConfig) error {
+		if d <= 0 {
+			return errors.New("miniflux: WithTimeout requires a positive duration")
+		}
+		c.timeout = d
 		return nil
 	}
 }
@@ -97,16 +132,25 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 		return nil, errors.New("miniflux: base URL is required")
 	}
 
-	cfg := clientConfig{httpClient: &http.Client{}}
+	cfg := clientConfig{timeout: defaultTimeout}
 	for _, o := range opts {
 		if err := o(&cfg); err != nil {
 			return nil, err
 		}
 	}
+	if cfg.httpClient == nil {
+		cfg.httpClient = &http.Client{Timeout: cfg.timeout}
+	}
 
 	rc := resty.NewWithClient(cfg.httpClient).SetBaseURL(baseURL)
 	return &Client{cfg: cfg, client: rc}, nil
 }
+
+// AsPort exposes c through the domain port interface (SPEC §6.1, C07GO). The
+// composition root uses it to pass the Miniflux client into the application
+// layer as the dmf.Client port rather than as the concrete infrastructure type,
+// keeping the application→domain dependency edge clean.
+func AsPort(c *Client) dmf.Client { return c }
 
 // ResolveToken returns the inbound X-Auth-Token when non-empty, else the
 // configured default token (SPEC §3.1).
@@ -117,23 +161,19 @@ func (c *Client) ResolveToken(inbound string) string {
 	return c.cfg.defaultToken
 }
 
-// tokenCtxKey is the context key for the per-call inbound X-Auth-Token.
-type tokenCtxKey struct{}
-
 // WithToken carries the inbound X-Auth-Token through ctx so per-call methods
-// honour the pass-through (SPEC §3.1). Mirrors logging.WithRequestID.
+// honour the pass-through (SPEC §3.1). The context key is owned by the domain
+// layer so the application layer can thread the same token into ctx without an
+// application→infrastructure edge; this wrapper keeps the infrastructure API
+// stable for existing callers.
 func WithToken(ctx context.Context, token string) context.Context {
-	return context.WithValue(ctx, tokenCtxKey{}, token)
+	return dmf.WithToken(ctx, token)
 }
 
 // TokenFromContext reads the inbound X-Auth-Token stored by WithToken,
-// returning "" when absent.
+// returning "" when absent. See the domain implementation.
 func TokenFromContext(ctx context.Context) string {
-	if ctx == nil {
-		return ""
-	}
-	v, _ := ctx.Value(tokenCtxKey{}).(string)
-	return v
+	return dmf.TokenFromContext(ctx)
 }
 
 // newRequest builds a resty request carrying the resolved X-Auth-Token and,
@@ -367,8 +407,29 @@ func (c *Client) ExportOPML(ctx context.Context) (string, error) {
 	return resp.String(), nil
 }
 
+// validateDiscoverURL enforces the S11/N21 allowlist for the open-world
+// discover_subscriptions input: the URL must parse and be absolute with an
+// http or https scheme. Anything else is rejected before any upstream call so
+// SSRF exposure stays bounded to the trusted Miniflux instance (SPEC §7/S11).
+func validateDiscoverURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("miniflux: discover: invalid URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("miniflux: discover: URL must use http or https scheme, got %q", u.Scheme)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("miniflux: discover: URL must be absolute with a host")
+	}
+	return nil
+}
+
 // Discover probes a URL and returns candidate feeds.
 func (c *Client) Discover(ctx context.Context, url string) ([]dmf.DiscoveryResult, error) {
+	if err := validateDiscoverURL(url); err != nil {
+		return nil, err
+	}
 	r := c.newRequest(ctx).SetBody(map[string]string{"url": url})
 
 	var out []dmf.DiscoveryResult
