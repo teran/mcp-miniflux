@@ -262,7 +262,7 @@ sequences before returning text to the client.
 **`discover_subscriptions`** — probe a URL and return candidate feeds.
 - Inputs: `url` (`string`, required — the URL to probe; strict format, must be
   an absolute `http(s)` URL, see §7).
-- Outputs: `feeds[]` (candidates: `url`, `title`, `type`).
+- Outputs: object with `feeds[]` (array of candidates: `url`, `title`, `type`).
 - Annotations: `title` "Discover subscriptions", `readOnlyHint:true`,
   **`openWorldHint:true`** (see justification below).
 - Instructions: "Takes an arbitrary URL and asks Miniflux to detect the feed(s)

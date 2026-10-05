@@ -12,9 +12,12 @@ import (
 // (S07/S10): its input URL and the returned candidates are untrusted external
 // data. Per S09/N23 the TEXT output must be routed through the ANSI/control
 // sanitizer (textContent) — never a raw TextContent — and the structured
-// content must be the redacted candidate list. This locks that:
+// content must be the redacted candidate list wrapped in an OBJECT under the
+// "feeds" key (S07/M07), matching DiscoverSubscriptions.OutputSchema — never a
+// bare top-level array. This locks that:
 //
-//   - res.StructuredContent is the typed, redacted candidate list.
+//   - res.StructuredContent is an object {feeds: [...]} holding the typed,
+//     redacted candidate list.
 //   - The TextContent equals exactly what sanitizeText would produce for the
 //     marshaled (already-redacted) payload — i.e. the handler MUST route its
 //     text output through textContent()/sanitizeText, not build a raw
@@ -39,10 +42,19 @@ func TestDiscoverSubscriptionsTextContentSanitized(t *testing.T) {
 	res, err := h.Call(context.Background(), map[string]any{"url": "https://example.com/feed"})
 	okRes(t, res, err)
 
-	// Structured content must be the typed, redacted candidate list (S07/M07).
-	sc, ok := res.StructuredContent.([]dmf.DiscoveryResult)
+	// Structured content must be the typed, redacted candidate list wrapped in
+	// an OBJECT under the "feeds" key (S07/M07) — never a bare top-level array.
+	obj, ok := res.StructuredContent.(map[string]any)
 	if !ok {
-		t.Fatalf("structured content type = %T, want []dmf.DiscoveryResult (M07)", res.StructuredContent)
+		t.Fatalf("structured content type = %T, want map[string]any object with feeds (M07)", res.StructuredContent)
+	}
+	feeds, ok := obj["feeds"]
+	if !ok {
+		t.Fatalf("structured content missing \"feeds\" key: %v (M07)", obj)
+	}
+	sc, ok := feeds.([]dmf.DiscoveryResult)
+	if !ok {
+		t.Fatalf("structured content.feeds type = %T, want []dmf.DiscoveryResult (M07)", feeds)
 	}
 	if len(sc) != 1 || sc[0].URL != "https://example.com/rss" {
 		t.Errorf("structured content = %+v, want candidate list", sc)
@@ -52,7 +64,7 @@ func TestDiscoverSubscriptionsTextContentSanitized(t *testing.T) {
 	// candidate title is seeded with one and encoding/json emits 0x7f literally.
 	// Sanitizing that payload must strip the DEL, so the handler's text content
 	// must equal the sanitized form — a raw TextContent would keep the DEL.
-	data, err := marshalJSON(dmf.Redact(cands))
+	data, err := marshalJSON(dmf.Redact(map[string]any{"feeds": cands}))
 	if err != nil {
 		t.Fatalf("marshalJSON: %v", err)
 	}

@@ -251,12 +251,27 @@ func TestDiscoverSubscriptionsHappy(t *testing.T) {
 	if res.StructuredContent == nil {
 		t.Fatal("expected structured content (S07)")
 	}
-	cands, ok := res.StructuredContent.([]dmf.DiscoveryResult)
+	// The structured output MUST be an OBJECT wrapping the candidate list under
+	// the "feeds" key (matching DiscoverSubscriptions.OutputSchema) — never a
+	// bare top-level array. This guards the schema<->structuredContent contract.
+	obj, ok := res.StructuredContent.(map[string]any)
 	if !ok {
-		t.Fatalf("structured content type %T, want []dmf.DiscoveryResult", res.StructuredContent)
+		t.Fatalf("structured content type %T, want map[string]any object with feeds (M07)", res.StructuredContent)
 	}
-	if !strings.Contains(cands[0].URL, "rss") {
+	feeds, ok := obj["feeds"]
+	if !ok {
+		t.Fatalf("structured content missing \"feeds\" key: %v (M07)", obj)
+	}
+	cands, ok := feeds.([]dmf.DiscoveryResult)
+	if !ok {
+		t.Fatalf("structured content.feeds type %T, want []dmf.DiscoveryResult", feeds)
+	}
+	if len(cands) != 1 || !strings.Contains(cands[0].URL, "rss") {
 		t.Errorf("structured content missing candidate: %v", cands)
+	}
+	// The text output must carry the same object shape (JSON {"feeds": [...]}).
+	if !strings.Contains(textOf(t, res), `"feeds"`) {
+		t.Errorf("text output must be the {\"feeds\":[...]} object, got: %s", textOf(t, res))
 	}
 }
 

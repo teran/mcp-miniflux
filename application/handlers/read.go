@@ -187,7 +187,7 @@ func (h DiscoverSubscriptionsHandler) Call(ctx context.Context, args map[string]
 	if err != nil {
 		return upstreamErr(err), nil
 	}
-	redacted := dmf.Redact(candidates)
+	redacted := dmf.Redact(map[string]any{"feeds": candidates})
 	data, err := marshalJSON(redacted)
 	if err != nil {
 		return nil, err

@@ -523,23 +523,31 @@ func TestIntegrationDiscoverSubscriptionsStructuredAndSanitized(t *testing.T) {
 		t.Fatalf("discover_subscriptions tool error; content=%+v", res.Content)
 	}
 
-	// Structured content is a typed candidate list (S07/M07).
+	// Structured content is an OBJECT wrapping the candidate list under the
+	// "feeds" key (S07/M07), matching DiscoverSubscriptions.OutputSchema — never
+	// a bare top-level array.
 	if len(res.StructuredContent) == 0 {
 		t.Fatal("expected structuredContent for discover_subscriptions")
 	}
-	var structured []struct {
-		URL   string `json:"url"`
-		Title string `json:"title"`
-		Type  string `json:"type"`
+	var structured struct {
+		Feeds []struct {
+			URL   string `json:"url"`
+			Title string `json:"title"`
+			Type  string `json:"type"`
+		} `json:"feeds"`
 	}
 	if err := json.Unmarshal(res.StructuredContent, &structured); err != nil {
 		t.Fatalf("decode structuredContent %q: %v", res.StructuredContent, err)
 	}
-	if len(structured) != 2 {
-		t.Fatalf("expected 2 candidates, got %d: %+v", len(structured), structured)
+	if len(structured.Feeds) != 2 {
+		t.Fatalf("expected 2 candidates under feeds, got %d: %+v", len(structured.Feeds), structured)
 	}
 
-	// The TEXT output is sanitized: no ANSI ESC or BEL anywhere in it.
+	// The TEXT output is the same object shape ({"feeds": [...]}), sanitized:
+	// no ANSI ESC or BEL anywhere in it.
+	if !strings.Contains(res.Content[0].Text, `"feeds"`) {
+		t.Errorf("text output must be the {\"feeds\":[...]} object, got: %q", res.Content[0].Text)
+	}
 	if strings.ContainsRune(res.Content[0].Text, 0x1b) {
 		t.Errorf("ANSI ESC leaked into text output: %q", res.Content[0].Text)
 	}
