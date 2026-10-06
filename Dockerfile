@@ -4,35 +4,38 @@
 #
 # The binary is produced by `make build` (goreleaser) into dist/ and copied
 # into the image per TARGETARCH. There is NO in-image compilation. The runtime
-# is distroless `nonroot` (UID 65532): no shell, no TLS in-process (S01/N01 —
-# reverse proxy terminates TLS), logs to stdout (L01).
+# is `FROM scratch` (mirrors the fleet pattern from mcp-netbox /
+# mcp-paperless-ngx): no shell, no TLS in-process (S01/N01 — reverse proxy
+# terminates TLS), logs to stdout (L01). CA certificates are staged from an
+# alpine base because the server makes outbound HTTPS calls to Miniflux, and a
+# minimal /etc/passwd supplies the non-root user (65534 nobody).
+# Usage (fleet pattern):
+#   goreleaser build --snapshot --clean          (== make build)
+#   cp dist/mcp-server_linux_amd64_v1/mcp-server mcp-server-linux-amd64
+#   cp dist/mcp-server_linux_arm64_v8.0/mcp-server mcp-server-linux-arm64
+#   docker buildx build --platform linux/amd64,linux/arm64 -t image:tag .
 
-# Stage 1 — artifact holder: the release binary from the build context.
-# goreleaser emits dist/mcp-server_linux_<arch>_<vN>/mcp-server (the trailing
-# version-suffixed directory — e.g. `..._amd64_v1/`, `..._arm64_v1/` — comes
-# from goreleaser's per-build id/version suffix, and differs per arch), so the
-# source is matched with a wildcard.
-# NOTE (B04): this wildcard is FRAGILE — it implicitly depends on goreleaser's
-# versioned artifact-suffix scheme (dist/mcp-server_linux_${TARGETARCH}_*/).
-# If a goreleaser upgrade changes the directory suffix pattern, or the build id
-# in .goreleaser.yml gains a different version marker, this COPY will silently
-# fail to find the binary. If it ever breaks, either fix the wildcard to match
-# the new suffix or pin a stable artifact path via a fixed goreleaser
-# `name_template`/`builds[].binary` layout (the OCI image tag scheme R03/R04 is
-# unchanged). Keep the source matched here in sync with `.goreleaser.yml`.
-FROM scratch AS artifact
+# Stage 1 — base: CA certificates + minimal passwd for the non-root user.
+FROM alpine:3.24 AS base
+RUN apk add --no-cache ca-certificates && \
+    echo 'nobody:x:65534:65534:nobody:/:/sbin/nologin' > /etc/passwd-minimal
+
+# Stage 2 — runtime: scratch, static, non-root.
+FROM scratch
 ARG TARGETARCH
-COPY dist/mcp-server_linux_${TARGETARCH}_*/mcp-server /app/mcp-server
+COPY --from=base /etc/passwd-minimal /etc/passwd
+COPY --from=base /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY mcp-server-linux-${TARGETARCH} /mcp-server
 
-# Stage 2 — runtime: distroless nonroot (UID 65532), static.
-FROM gcr.io/distroless/static-debian12:nonroot
+USER 65534:65534
 
-COPY --from=artifact /app/mcp-server /app/mcp-server
-
-# Streamable HTTP (MCP) listener (LISTEN_ADDR default :8080). Observability
-# (:8081) is not exposed here — a reverse proxy forwards only :8080 (O04).
+# Streamable HTTP (MCP) listener (LISTEN_ADDR default :8080) + internal
+# observability (:8081 — metrics/pprof/probes) on INTERNAL_ADDR.
 EXPOSE 8080
+EXPOSE 8081
 
-USER 65532:65532
+ENTRYPOINT ["/mcp-server", "-mode", "http"]
 
-ENTRYPOINT ["/app/mcp-server", "-mode", "http"]
+LABEL org.opencontainers.image.source="https://github.com/teran/mcp-miniflux"
+LABEL org.opencontainers.image.description="Remote MCP server for Miniflux"
+LABEL org.opencontainers.image.licenses="Apache-2.0"

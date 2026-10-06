@@ -47,3 +47,7 @@ bin/
 
 # Temporary build artifacts
 /tmp/build/
+
+# Fixed-name binaries staged for the container build (make container-image)
+mcp-server-linux-amd64
+mcp-server-linux-arm64

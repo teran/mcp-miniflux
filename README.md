@@ -230,8 +230,9 @@ CI binds to the build-system interface (`make <target>`) and enforces:
 - `make release` — goreleaser `release --clean` → publish binary artifacts to a
   GitHub Release (tag runs only).
 - `make container-image` / `make container-image push=true` — build / build+push
-  the container image **from the `make build` artifact** (distroless `nonroot`;
-  no in-image compilation). CI computes the R03/R04 multi-tag set
+  the container image **from the `make build` artifact** (`FROM scratch` runtime
+  with alpine base stage for CA certs + non-root user; no in-image
+  compilation). CI computes the R03/R04 multi-tag set
   (`X`, `X-{ts}`, `X-{commit}`, `X-{commit}-{ts}` on tags;
   `master-{commit}`, `master-{ts}`, `master-{commit}-{ts}` on master).
 

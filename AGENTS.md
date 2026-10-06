@@ -43,7 +43,8 @@ CI binds to the **build-system interface**: it calls `make <target>`, not raw
   govulncheck, go-arch-lint. **Findings are FIXED, never suppressed** (no blanket
   `#nosec`, no default excludes).
 - `make container-image [push=true]` — build-only / build+push the image **from
-  the `build` artifact** (distroless `nonroot`, no in-image compilation).
+  the `build` artifact** (`FROM scratch` runtime with alpine base stage for CA
+  certs + non-root user; no in-image compilation).
 
 **Dedicated hard gates** (not part of the make interface — separate CI jobs):
 

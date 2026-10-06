@@ -44,7 +44,9 @@ build: ## goreleaser -> single binary per platform into dist/ (B01/B02/B04)
 release: ## goreleaser release --clean -> publish binary artifacts to GitHub Release (B01/B02)
 	goreleaser release --clean
 
-container-image: build ## build (or build+push when push=true) distroless image from the release binary
+container-image: build ## build (or build+push when push=true) scratch image from the release binary
+	cp dist/mcp-server_linux_amd64_v1/mcp-server mcp-server-linux-amd64
+	cp dist/mcp-server_linux_arm64_v8.0/mcp-server mcp-server-linux-arm64
 	@set -e; \
 	TAGS="-t $(IMAGE_NAME):$(IMAGE_TAG)"; \
 	for t in $(subst $(comma), ,$(EXTRA_TAGS)); do \
@@ -66,4 +68,4 @@ fmt: ## gofmt + gofumpt (helper)
 	gofumpt -w .
 
 clean: ## remove build/test artifacts
-	rm -rf dist/ coverage.out bin/
+	rm -rf dist/ coverage.out bin/ mcp-server-linux-amd64 mcp-server-linux-arm64

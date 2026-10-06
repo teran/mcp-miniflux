@@ -871,14 +871,16 @@ Staleness is a **defect** at conformance (C05/N33): upgrade/fix, never suppress.
 - **B02:** binary embeds build metadata via ldflags — `appName`, `appVersion`,
   `appCommitHash`, `appTimestamp`.
 - **B04/N18:** the image is built **from the single release binary artifact**
-  (distroless nonroot Dockerfile; no in-image compilation).
+  (scratch-based Dockerfile; no in-image compilation).
 - **B05:** when logging is enabled (always in HTTP mode), the **startup banner**
   is the first log line (§9).
 
-**Dockerfile (B04):** multi-stage, **distroless `nonroot`** (UID 65532),
-per-platform `COPY` of the release binary via `TARGETARCH` (linux/amd64,
-linux/arm64), `EXPOSE 8080`, `ENTRYPOINT ["/app/mcp-server", "-mode", "http"]`
-— no TLS in-process (N01/S01; reverse proxy terminates), logs to stdout (L01).
+**Dockerfile (B04):** multi-stage, `FROM scratch` runtime with an alpine base
+stage supplying CA certificates and a minimal `/etc/passwd` for the non-root
+user (UID 65534), per-platform `COPY` of the release binary via `TARGETARCH`
+(linux/amd64, linux/arm64), `EXPOSE 8080` + `EXPOSE 8081`,
+`ENTRYPOINT ["/mcp-server", "-mode", "http"]` — no TLS in-process (N01/S01;
+reverse proxy terminates), logs to stdout (L01).
 
 **B02 — embedded `appVersion` vs image tag (documented behaviour).** `make
 build` runs **goreleaser snapshot** (`goreleaser build --snapshot`), which
