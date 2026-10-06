@@ -204,6 +204,37 @@ func TestGetCountersHandler(t *testing.T) {
 	}
 }
 
+// TestGetCountersHandlerStructuredFeedsNonNull pins BUG 1 at the handler level:
+// the get_counters StructuredContent must carry a NON-NIL `feeds` object so it
+// satisfies GetCounters.OutputSchema countersProps (`feeds` declared type
+// "object"). When the client parses the real {reads,unreads} wire shape, Feeds
+// is a populated map; a nil Feeds would marshal to "feeds":null and be rejected
+// by the typed output schema.
+func TestGetCountersHandlerStructuredFeedsNonNull(t *testing.T) {
+	c := &fakeClient{getCounters: func(context.Context) (*dmf.Counters, error) {
+		return &dmf.Counters{
+			Feeds:  map[string]dmf.CounterTotals{"1": {Read: 12, Unread: 7}},
+			Totals: dmf.CounterTotals{Read: 12, Unread: 7},
+		}, nil
+	}}
+	h := GetCountersHandler{Client: c}
+	res, err := h.Call(context.Background(), nil)
+	okRes(t, res, err)
+	if res.StructuredContent == nil {
+		t.Fatal("BUG1: get_counters StructuredContent is nil (declares an outputSchema)")
+	}
+	ctr, ok := res.StructuredContent.(*dmf.Counters)
+	if !ok {
+		t.Fatalf("StructuredContent type %T, want *dmf.Counters", res.StructuredContent)
+	}
+	if ctr.Feeds == nil {
+		t.Error("BUG1: get_counters output 'feeds' is nil/null — must be a non-nil object to pass the countersProps typed output schema")
+	}
+	if _, ok := ctr.Feeds["1"]; !ok {
+		t.Errorf("BUG1: get_counters output feeds missing feed \"1\": %v", ctr.Feeds)
+	}
+}
+
 func TestGetMeHandler(t *testing.T) {
 	c := &fakeClient{getMe: func(context.Context) (*dmf.Me, error) {
 		return &dmf.Me{ID: 1, Username: "u"}, nil

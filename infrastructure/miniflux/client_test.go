@@ -288,7 +288,11 @@ func TestBaseURLPathJoining(t *testing.T) {
 	}
 }
 
-func TestListFeedsPathAndCategory(t *testing.T) {
+// TestListFeedsCategoryUsesCategoryEndpoint pins BUG 2. Miniflux GET /v1/feeds
+// does NOT accept a category_id query param (it is ignored); scoping feeds to a
+// category uses the dedicated GET /v1/categories/{categoryID}/feeds endpoint
+// (https://miniflux.app/docs/api.html#endpoint-get-category-feeds).
+func TestListFeedsCategoryUsesCategoryEndpoint(t *testing.T) {
 	srv, cap := startServer(t, okFeeds)
 	c := newTestClient(t, srv.URL)
 
@@ -297,13 +301,119 @@ func TestListFeedsPathAndCategory(t *testing.T) {
 		t.Fatalf("ListFeeds: %v", err)
 	}
 	method, path, q, _, _, _ := cap.snapshot()
-	if method != http.MethodGet || path != "/v1/feeds" {
-		t.Errorf("got %s %s, want GET /v1/feeds", method, path)
+	if method != http.MethodGet || path != "/v1/categories/3/feeds" {
+		t.Errorf("BUG2: got %s %s, want GET /v1/categories/3/feeds (category_id must use the category endpoint, not a /v1/feeds query param)", method, path)
 	}
-	for _, kv := range []string{"category_id=3", "limit=10", "offset=5"} {
+	for _, kv := range []string{"limit=10", "offset=5"} {
 		if !strings.Contains(q, kv) {
 			t.Errorf("query %q missing %q", q, kv)
 		}
+	}
+}
+
+// TestListFeedsNilCategoryUsesFeedsEndpoint: with a nil category the client must
+// still use the plain GET /v1/feeds endpoint.
+func TestListFeedsNilCategoryUsesFeedsEndpoint(t *testing.T) {
+	srv, cap := startServer(t, okFeeds)
+	c := newTestClient(t, srv.URL)
+
+	if _, err := c.ListFeeds(context.Background(), nil, 0, 0); err != nil {
+		t.Fatalf("ListFeeds: %v", err)
+	}
+	method, path, _, _, _, _ := cap.snapshot()
+	if method != http.MethodGet || path != "/v1/feeds" {
+		t.Errorf("got %s %s, want GET /v1/feeds (nil category)", method, path)
+	}
+}
+
+// TestGetCountersRealWireFeedsNonNull pins BUG 1. Miniflux GET /v1/feeds/counters
+// returns {"reads":{...},"unreads":{...}} (NOT {"feeds":...,"totals":...}). The
+// client must parse the real wire shape so the resulting Counters.Feeds map is
+// non-nil (otherwise the MCP typed output schema rejects "feeds":null).
+func TestGetCountersRealWireFeedsNonNull(t *testing.T) {
+	srv, _ := startServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"reads":{"1":12,"3":1},"unreads":{"1":7,"3":99}}`)
+	})
+	c := newTestClient(t, srv.URL)
+
+	counters, err := c.GetCounters(context.Background())
+	if err != nil {
+		t.Fatalf("GetCounters: %v", err)
+	}
+	if counters == nil {
+		t.Fatal("GetCounters returned nil")
+	}
+	if counters.Feeds == nil || len(counters.Feeds) == 0 {
+		t.Fatal("BUG1: GetCounters Feeds is nil/empty — the real {reads,unreads} wire shape was not parsed into the Feeds map")
+	}
+}
+
+// TestCreateFeedParsesFeedIDAndResolvesFeed pins BUG 3. Miniflux POST /v1/feeds
+// returns {"feed_id":262} — NOT a full Feed object. The client must parse the
+// returned feed id and resolve the complete feed (e.g. via a follow-up GetFeed)
+// so the tool's output schema (a full Feed object) is satisfied.
+func TestCreateFeedParsesFeedIDAndResolvesFeed(t *testing.T) {
+	srv, cap := startServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/feeds":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"feed_id":262}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/feeds/262":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"id":262,"user_id":7,"title":"Example Feed","feed_url":"https://example.com/feed.xml","site_url":"https://example.com/","category":{"id":3,"title":"Tech"},"status":"active","error_count":0}`)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	c := newTestClient(t, srv.URL)
+
+	cat := 3
+	feed, err := c.CreateFeed(context.Background(), dmf.CreateFeedRequest{
+		FeedURL:    "https://example.com/feed.xml",
+		CategoryID: &cat,
+	})
+	if err != nil {
+		t.Fatalf("CreateFeed: %v", err)
+	}
+	if feed == nil {
+		t.Fatal("CreateFeed returned nil")
+	}
+	if feed.ID != 262 {
+		t.Errorf("BUG3: feed.ID = %d, want 262 (POST /v1/feeds returns {\"feed_id\":262}, not a full Feed; the client must resolve the created feed)", feed.ID)
+	}
+	if feed.Title != "Example Feed" {
+		t.Errorf("BUG3: feed.Title = %q, want %q (the client must resolve the complete created feed)", feed.Title, "Example Feed")
+	}
+	_, _, _, _, _, hits := cap.snapshot()
+	if hits < 2 {
+		t.Errorf("BUG3: upstream hit %d times, want >=2 (POST then GET to resolve the feed)", hits)
+	}
+}
+
+// TestGetEntryRealWireDatesNonZero documents BUG 4 (regression guard). The real
+// Miniflux wire format for published_at/created_at is RFC3339 strings. Current
+// code already parses these, so this test should PASS — it protects the correct
+// behaviour against regression to the zero time 0001-01-01T00:00:00Z.
+func TestGetEntryRealWireDatesNonZero(t *testing.T) {
+	srv, _ := startServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"id":888,"user_id":123,"feed_id":42,"title":"Entry Title","url":"http://example.org/article.html","comments_url":"","published_at":"2016-12-12T16:15:19Z","created_at":"2023-10-07T03:52:50.013556Z","status":"unread","starred":false,"content":"<p>hi</p>"}`)
+	})
+	c := newTestClient(t, srv.URL)
+
+	e, err := c.GetEntry(context.Background(), 888)
+	if err != nil {
+		t.Fatalf("GetEntry: %v", err)
+	}
+	if e == nil {
+		t.Fatal("GetEntry returned nil")
+	}
+	if e.PublishedAt.IsZero() {
+		t.Error("BUG4: PublishedAt is zero — real wire format is an RFC3339 string")
+	}
+	if e.CreatedAt.IsZero() {
+		t.Error("BUG4: CreatedAt is zero — real wire format is an RFC3339 string")
 	}
 }
 

@@ -269,20 +269,78 @@ func TestEntryJSONRoundTrip(t *testing.T) {
 	}
 }
 
-func TestCountersJSONRoundTrip(t *testing.T) {
+// TestEntryRealWireDatesNonZero pins BUG 4. The real Miniflux wire format for
+// published_at/created_at is an RFC3339 STRING (verified against
+// https://miniflux.app/docs/api.html, e.g. "2016-12-12T16:15:19Z" and
+// "2023-10-07T03:52:50.013556Z" — the latter carries fractional seconds).
+// Current code parses these correctly into time.Time; this regression test
+// documents the correct behaviour so a stale build or a mistaken integer/unix
+// wire format can never silently regress to the zero time 0001-01-01T00:00:00Z.
+func TestEntryRealWireDatesNonZero(t *testing.T) {
 	j := `{
-		"feeds": {"42": 3, "43": 0},
-		"totals": {"unread": 3, "read": 45}
+		"id": 888,
+		"user_id": 123,
+		"feed_id": 42,
+		"title": "Entry Title",
+		"url": "http://example.org/article.html",
+		"published_at": "2016-12-12T16:15:19Z",
+		"created_at": "2023-10-07T03:52:50.013556Z",
+		"status": "unread",
+		"starred": false
 	}`
+	var e Entry
+	if err := json.Unmarshal([]byte(j), &e); err != nil {
+		t.Fatalf("unmarshal Entry (real wire format): %v", err)
+	}
+	if e.PublishedAt.IsZero() {
+		t.Error("BUG4: PublishedAt is zero — real wire format is an RFC3339 string")
+	}
+	if e.CreatedAt.IsZero() {
+		t.Error("BUG4: CreatedAt is zero — real wire format is an RFC3339 string")
+	}
+	if want := time.Date(2016, 12, 12, 16, 15, 19, 0, time.UTC); !e.PublishedAt.Equal(want) {
+		t.Errorf("PublishedAt = %v, want %v", e.PublishedAt, want)
+	}
+	if e.CreatedAt.Year() != 2023 || e.CreatedAt.Month() != time.October {
+		t.Errorf("CreatedAt = %v, want 2023-10-07", e.CreatedAt)
+	}
+}
+
+// TestCountersRealWireShape pins BUG 1. Miniflux GET /v1/feeds/counters returns
+// {"reads":{...},"unreads":{...}} — NOT {"feeds":...,"totals":...}
+// (https://miniflux.app/docs/api.html#endpoint-counters). The Counters model
+// must parse the real wire shape into a non-nil per-feed Feeds map (feed id ->
+// {read, unread}) and sum the account totals. This is the contract @developer
+// must implement (custom UnmarshalJSON over reads/unreads).
+func TestCountersRealWireShape(t *testing.T) {
+	j := `{"reads":{"1":12,"3":1},"unreads":{"1":7,"3":99}}`
 	var c Counters
 	if err := json.Unmarshal([]byte(j), &c); err != nil {
 		t.Fatalf("unmarshal Counters: %v", err)
 	}
-	if c.Feeds["42"] != 3 || c.Feeds["43"] != 0 {
-		t.Errorf("Counters.Feeds = %v", c.Feeds)
+	if c.Feeds == nil {
+		t.Fatal("BUG1: Counters.Feeds is nil after unmarshaling the real {reads,unreads} wire shape")
 	}
-	if c.Totals != (CounterTotals{Unread: 3, Read: 45}) {
-		t.Errorf("Counters.Totals = %+v", c.Totals)
+	if f := c.Feeds["1"]; f.Read != 12 || f.Unread != 7 {
+		t.Errorf("Feeds[\"1\"] = %+v, want {Read:12 Unread:7}", f)
+	}
+	if f := c.Feeds["3"]; f.Read != 1 || f.Unread != 99 {
+		t.Errorf("Feeds[\"3\"] = %+v, want {Read:1 Unread:99}", f)
+	}
+	if c.Totals.Read != 13 || c.Totals.Unread != 106 {
+		t.Errorf("Totals = %+v, want {Read:13 Unread:106}", c.Totals)
+	}
+
+	// Output shape: feeds object keyed by feed id with per-feed read/unread,
+	// plus totals — matching GetCounters.OutputSchema countersProps.
+	b, err := json.Marshal(c)
+	if err != nil {
+		t.Fatalf("marshal Counters: %v", err)
+	}
+	for _, key := range []string{"feeds", "totals", "read", "unread"} {
+		if !strings.Contains(string(b), key) {
+			t.Errorf("marshaled Counters missing %q in %s", key, b)
+		}
 	}
 }
 
