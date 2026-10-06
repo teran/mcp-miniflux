@@ -43,7 +43,7 @@ func TestGetEntry(t *testing.T) {
 
 func TestGetCounters(t *testing.T) {
 	srv, _ := startServer(t, func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, `{"feeds":{"42":3},"totals":{"unread":3,"read":1}}`)
+		io.WriteString(w, `{"reads":{"42":1},"unreads":{"42":3}}`)
 	})
 	c := newTestClient(t, srv.URL)
 
@@ -51,7 +51,7 @@ func TestGetCounters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetCounters: %v", err)
 	}
-	if counters == nil || counters.Feeds["42"] != 3 || counters.Totals.Unread != 3 {
+	if counters == nil || counters.Feeds["42"] != (dmf.CounterTotals{Read: 1, Unread: 3}) || counters.Totals.Unread != 3 {
 		t.Errorf("GetCounters = %+v", counters)
 	}
 }
@@ -95,9 +95,27 @@ func TestDiscover(t *testing.T) {
 }
 
 func TestCreateFeed(t *testing.T) {
-	srv, cap := startServer(t, func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, `{"id":1,"title":"F","feed_url":"https://example.com/feed.xml"}`)
-	})
+	// POST /v1/feeds returns only {"feed_id":N}; the client must then resolve
+	// the full feed via GET /v1/feeds/{id}. Use a dedicated server so the POST
+	// body can be captured (startServer records only the last request's body,
+	// which here is the resolving GET).
+	var postBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/feeds":
+			b, _ := io.ReadAll(r.Body)
+			postBody = string(b)
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"feed_id":1}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/feeds/1":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"id":1,"title":"F","feed_url":"https://example.com/feed.xml"}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
 	c := newTestClient(t, srv.URL)
 
 	cat := 3
@@ -109,12 +127,11 @@ func TestCreateFeed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateFeed: %v", err)
 	}
-	_, _, _, _, body, _ := cap.snapshot()
-	if !strings.Contains(string(body), "feed.xml") || !strings.Contains(string(body), "\"category_id\":3") {
-		t.Errorf("CreateFeed body = %q", string(body))
+	if !strings.Contains(postBody, "feed.xml") || !strings.Contains(postBody, "\"category_id\":3") {
+		t.Errorf("CreateFeed body = %q", postBody)
 	}
-	if f == nil || f.ID != 1 {
-		t.Errorf("CreateFeed = %+v", f)
+	if f == nil || f.ID != 1 || f.Title != "F" {
+		t.Errorf("CreateFeed = %+v (want resolved feed id 1)", f)
 	}
 }
 

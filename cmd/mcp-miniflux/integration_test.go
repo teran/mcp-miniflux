@@ -120,6 +120,10 @@ func (m *mockUpstream) handler() http.Handler {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/feeds":
 			writeJSON(w, m.feeds)
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/feeds":
+			// Miniflux POST /v1/feeds returns {"feed_id":N}; the client then
+			// resolves the full feed via GET /v1/feeds/{id}.
+			writeJSON(w, map[string]int{"feed_id": m.createResp.ID})
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/feeds/"):
 			writeJSON(w, m.createResp)
 		case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/v1/feeds/"):
 			// Miniflux returns 204 on delete; no body.
@@ -401,16 +405,20 @@ func TestIntegrationCreateFeedSearchBeforeCreate(t *testing.T) {
 		t.Errorf("password leaked into create_feed output: %s", res.Content[0].Text)
 	}
 
-	// Order: GET (search) then POST (create).
+	// Order: GET (search) then POST (create) then GET (resolve the created
+	// feed by id — POST /v1/feeds returns only {"feed_id":N}).
 	reqs := h.upstream.snapshot()
-	if len(reqs) != 2 {
-		t.Fatalf("expected 2 upstream requests (search+create), got %d: %+v", len(reqs), reqs)
+	if len(reqs) != 3 {
+		t.Fatalf("expected 3 upstream requests (search+create+resolve), got %d: %+v", len(reqs), reqs)
 	}
 	if reqs[0].Method != http.MethodGet || reqs[0].Path != "/v1/feeds" {
 		t.Errorf("request[0] = %s %s, want GET /v1/feeds (search)", reqs[0].Method, reqs[0].Path)
 	}
 	if reqs[1].Method != http.MethodPost || reqs[1].Path != "/v1/feeds" {
 		t.Errorf("request[1] = %s %s, want POST /v1/feeds (create)", reqs[1].Method, reqs[1].Path)
+	}
+	if reqs[2].Method != http.MethodGet || reqs[2].Path != "/v1/feeds/42" {
+		t.Errorf("request[2] = %s %s, want GET /v1/feeds/42 (resolve)", reqs[2].Method, reqs[2].Path)
 	}
 	// Password IS forwarded upstream (that is the point of the credential).
 	if !bytes.Contains(reqs[1].Body, []byte("client-supplied-pw")) {

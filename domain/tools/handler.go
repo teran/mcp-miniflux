@@ -130,7 +130,8 @@ func entryProps() map[string]any {
 }
 
 // countersProps returns the properties of a Counters object. `feeds` is a
-// map[string]int keyed by feed id, declared as a permissive object.
+// map[string]CounterTotals keyed by feed id (each value an object of
+// {read,unread}), declared as a permissive object.
 func countersProps() map[string]any {
 	return map[string]any{
 		"feeds":  map[string]any{"type": "object"},

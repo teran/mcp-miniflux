@@ -298,10 +298,15 @@ func sanitizeMessage(s string) string {
 // --- Read methods (SPEC §4.1) ---
 
 // ListFeeds returns all feed subscriptions, optionally scoped to a category.
+// Miniflux does not accept a category_id query param on /v1/feeds; scoping to a
+// category uses the dedicated GET /v1/categories/{categoryID}/feeds endpoint
+// (https://miniflux.app/docs/api.html#endpoint-get-category-feeds).
 func (c *Client) ListFeeds(ctx context.Context, categoryID *int, limit, offset int) ([]dmf.Feed, error) {
 	r := c.newRequest(ctx)
+	path := "/v1/feeds"
 	if categoryID != nil {
-		r.SetQueryParam("category_id", strconv.Itoa(*categoryID))
+		path = "/v1/categories/{categoryID}/feeds"
+		r.SetPathParam("categoryID", strconv.Itoa(*categoryID))
 	}
 	if limit > 0 {
 		r.SetQueryParam("limit", strconv.Itoa(limit))
@@ -311,7 +316,7 @@ func (c *Client) ListFeeds(ctx context.Context, categoryID *int, limit, offset i
 	}
 
 	var feeds []dmf.Feed
-	if _, err := c.execute(ctx, r, http.MethodGet, "/v1/feeds", &feeds); err != nil {
+	if _, err := c.execute(ctx, r, http.MethodGet, path, &feeds); err != nil {
 		return nil, err
 	}
 	return feeds, nil
@@ -475,15 +480,19 @@ func (c *Client) Discover(ctx context.Context, url string) ([]dmf.DiscoveryResul
 
 // --- Write / update methods (SPEC §4.2) ---
 
-// CreateFeed subscribes to a feed.
+// CreateFeed subscribes to a feed. Miniflux POST /v1/feeds returns
+// `{"feed_id":262}` — an id, not a full Feed object — so the created feed is
+// resolved via a follow-up GetFeed to satisfy the tool's Feed output schema.
 func (c *Client) CreateFeed(ctx context.Context, req dmf.CreateFeedRequest) (*dmf.Feed, error) {
 	r := c.newRequest(ctx).SetBody(req)
 
-	var feed dmf.Feed
-	if _, err := c.execute(ctx, r, http.MethodPost, "/v1/feeds", &feed); err != nil {
+	var created struct {
+		FeedID int `json:"feed_id"`
+	}
+	if _, err := c.execute(ctx, r, http.MethodPost, "/v1/feeds", &created); err != nil {
 		return nil, err
 	}
-	return &feed, nil
+	return c.GetFeed(ctx, created.FeedID)
 }
 
 // UpdateFeed updates a feed's metadata/credentials.

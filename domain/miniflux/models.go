@@ -4,7 +4,10 @@
 // strip them from tool output and logs.
 package miniflux
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // CategoryRef is a lightweight reference to a category embedded in a Feed.
 type CategoryRef struct {
@@ -65,10 +68,46 @@ type CounterTotals struct {
 	Read   int `json:"read"`
 }
 
-// Counters holds per-feed unread counts plus account totals.
+// Counters holds per-feed read/unread counts plus account totals.
 type Counters struct {
-	Feeds  map[string]int `json:"feeds"`
-	Totals CounterTotals  `json:"totals"`
+	Feeds  map[string]CounterTotals `json:"feeds"`
+	Totals CounterTotals            `json:"totals"`
+}
+
+// UnmarshalJSON parses the real Miniflux GET /v1/feeds/counters wire shape:
+// `{"reads":{feed_id:count,...},"unreads":{feed_id:count,...}}`. It folds the
+// reads/unreads maps into the per-feed Feeds map (feed id -> {read, unread})
+// and sums the account-wide Totals. When reads/unreads are absent or empty,
+// Feeds is still initialized to a non-nil empty map so it marshals to `{}` (an
+// object) rather than `null` — the typed output schema declares feeds as
+// `{"type":"object"}`, which rejects null.
+func (c *Counters) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		Reads   map[string]int `json:"reads"`
+		Unreads map[string]int `json:"unreads"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+
+	feeds := make(map[string]CounterTotals, len(wire.Reads))
+	readTotal, unreadTotal := 0, 0
+	for id, n := range wire.Reads {
+		ct := feeds[id]
+		ct.Read = n
+		feeds[id] = ct
+		readTotal += n
+	}
+	for id, n := range wire.Unreads {
+		ct := feeds[id]
+		ct.Unread = n
+		feeds[id] = ct
+		unreadTotal += n
+	}
+
+	c.Feeds = feeds
+	c.Totals = CounterTotals{Read: readTotal, Unread: unreadTotal}
+	return nil
 }
 
 // Me models the authenticated user's profile.
