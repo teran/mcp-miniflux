@@ -826,20 +826,14 @@ mutation (C02/C08GO) and **gitleaks** secret scan (C03/N28).
 - **Release artifacts:** on tags → **goreleaser release** (B01) publishing the
   binary artifacts; then `make container-image push=true` (R01/B03/B04) building
   and pushing the image **from the single release binary** (B04/N18).
-- **Live badge publishing (`badges` job) — documented reporting-only exception
-  (NOT an N31 violation).** The `badges` job re-computes the quality metrics for
-  the README's shields.io/endpoint badges by invoking the underlying tools
-  **directly** (raw `go test`/`go tool cover`, `gosec`, `govulncheck`,
-  `gremlins`) rather than `make <target>`. This is a **deliberate, documented
-  exception to the R07/N31 build-system interface**: the job is **reporting-only**
-  — it recomputes metrics solely to render badge colors, is **gated on the real
-  quality jobs** (`needs: [lint, build, test, mutation, secret-scan]`), pushes
-  **only to the dedicated `badges` branch** (never `master`), and its pass/fail
-  is **never a gate** on the build (it does not gate the pipeline or the release;
-  it is not a required check). Because it is not a gate, invoking raw commands
-  there does not violate N31 (which prohibits CI *gating* on language-specific
-  commands instead of the make interface). The actual quality gates remain the
-  make-bound jobs above.
+- **No live badge publishing.** A former `badges` job auto-committed and
+  force-pushed shields.io/endpoint JSON files to a dedicated `badges` branch of
+  this repository. That job was **REMOVED to comply with N36** (CI never mutates
+  repository git state — write-side effects are allowed only as external
+  publications such as registry images or Release binaries). The quality badges
+  (Coverage, gosec, govulncheck, gremlins) in the README are now **static
+  snapshots** reflecting the latest passing build; they are not published or
+  updated by CI.
 
 ### 11.3 Version currency (C05/N33, C01GO)
 
@@ -993,11 +987,11 @@ points to where each is addressed:
 | C01GO–C09GO | §11, §6.1 (C09GO N/A — no e2e, §11.5) |
 | L01GO–L04GO | §9 |
 
-No **MUST NOT** is violated. Each `MUST NOT` (N01–N35, N01GO–N07GO) is either
+No **MUST NOT** is violated. Each `MUST NOT` (N01–N36, N01GO–N07GO) is either
 addressed (the requirement that would be violated is satisfied elsewhere) or
 explicitly N/A — traced per code below.
 
-**Common MUST NOT (N01–N35):**
+**Common MUST NOT (N01–N36):**
 
 | Code | Addressed / N/A |
 |------|-----------------|
@@ -1031,11 +1025,12 @@ explicitly N/A — traced per code below.
 | N28 | §7, §11.2 (gitleaks over git history — C03) |
 | N29 | §4 (no generic mega-tools — M07) |
 | N30 | N/A — no e2e suite (§11.5) |
-| N31 | §11.1, §11.2 (build-system interface — R07; badges exception documented) |
+| N31 | §11.1, §11.2 (build-system interface — R07) |
 | N32 | §10 (observability endpoint always present — O01) |
 | N33 | §11.3 (version currency — C05) |
 | N34 | §7 (supply-chain, Go lower-risk — S13) |
 | N35 | §6.6 (no outbound/upstream request at startup — A02) |
+| N36 | §11.2 (CI performs no repository git mutation — the `badges` job was removed; README quality badges are static snapshots) |
 
 **Go MUST NOT (N01GO–N07GO):**
 

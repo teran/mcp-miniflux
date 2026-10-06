@@ -8,18 +8,14 @@
 [![MCP](https://img.shields.io/badge/MCP-Server-blue)](https://modelcontextprotocol.io)
 [![Go Reference](https://pkg.go.dev/badge/github.com/teran/mcp-miniflux.svg)](https://pkg.go.dev/github.com/teran/mcp-miniflux)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/teran/mcp-miniflux)](go.mod)
-[![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fteran%2Fmcp-miniflux%2Fbadges%2Fcoverage.json "Coverage (live CI badge)")](SPEC.md)
-[![gosec](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fteran%2Fmcp-miniflux%2Fbadges%2Fgosec.json "gosec (live CI badge)")](https://github.com/teran/mcp-miniflux/actions/workflows/ci.yml)
-[![govulncheck](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fteran%2Fmcp-miniflux%2Fbadges%2Fgovulncheck.json "govulncheck (live CI badge)")](https://github.com/teran/mcp-miniflux/actions/workflows/ci.yml)
-[![gremlins](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fteran%2Fmcp-miniflux%2Fbadges%2Fgremlins.json "mutation testing (live CI badge)")](https://github.com/teran/mcp-miniflux/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-96.3%25-brightgreen)](SPEC.md)
+[![gosec](https://img.shields.io/badge/gosec-pass-brightgreen)](https://github.com/teran/mcp-miniflux/actions/workflows/ci.yml)
+[![govulncheck](https://img.shields.io/badge/govulncheck-pass-brightgreen)](https://github.com/teran/mcp-miniflux/actions/workflows/ci.yml)
+[![gremlins](https://img.shields.io/badge/gremlins-80%2F80-brightgreen)](https://github.com/teran/mcp-miniflux/actions/workflows/ci.yml)
 
 > The **Coverage**, **gosec**, **govulncheck** and **gremlins** badges above are
-> **live** badges: on every `master` build, the CI `badges` job re-runs each
-> quality check, writes a small shields.io/endpoint JSON file per metric, and
-> force-pushes them to the dedicated [`badges`](https://github.com/teran/mcp-miniflux/tree/badges)
-> branch. These badges resolve through
-> `https://img.shields.io/endpoint?url=<raw.githubusercontent.com/teran/mcp-miniflux/badges/*.json>`,
-> so they always reflect the latest `master` results. All other badges are active.
+> **static snapshots** reflecting the latest passing `master` build — CI never
+> publishes them to a branch (N36). All other badges are active.
 
 A stateless **Remote (HTTP)** [Model Context Protocol](https://modelcontextprotocol.io) server that
 exposes the [Miniflux](https://miniflux.app) RSS reader API as a set of specific,

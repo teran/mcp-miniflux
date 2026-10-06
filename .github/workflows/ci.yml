@@ -6,6 +6,10 @@
 #   gremlins mutation (C02/C08GO) and gitleaks secret scan (C03/N28).
 # No job invokes an undeclared optional target. Findings are FIXED, never
 # suppressed (S05/N02GO). No e2e job — no e2e suite exists (§11.5, C04/T02 N/A).
+#
+# N36 compliance: this workflow NEVER mutates repository git state. The former
+# `badges` job (which auto-committed/force-pushed to a `badges` branch) was
+# removed; quality badges in the README are now static snapshots (§11.2).
 name: CI
 
 on:
@@ -21,8 +25,6 @@ env:
   # Pinned toolchain versions (single source of truth: reference/versions.md)
   GREMLINS_VERSION: "v0.6.0"
   GITLEAKS_VERSION: "v8.30.1"
-  GOSEC_VERSION: "v2.29.0"
-  GOVULNCHECK_VERSION: "v1.8.0"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -121,127 +123,6 @@ jobs:
           go install github.com/zricethezav/gitleaks/v8@${{ env.GITLEAKS_VERSION }}
       - name: Run gitleaks detect
         run: gitleaks detect --source . --redact --verbose
-
-  # Live badge publishing — recompute each quality metric and force-push the
-  # shields.io/endpoint JSON files to a dedicated `badges` branch so the README
-  # badges can resolve them via raw.githubusercontent.com. Reporting-only job:
-  # it re-runs the checks itself so it OWNS its outputs (independent of the make
-  # interface, R07 — these are dedicated-gate style tools). It is gated on the
-  # real quality jobs (`needs`) so badges only (re)publish on a passing build,
-  # and its own re-run determines the pass/fail color shown. Pushes only to the
-  # `badges` branch — never to `master` — so it never re-triggers this workflow.
-  badges:
-    name: Publish live CI badges
-    if: github.ref == 'refs/heads/master'
-    needs: [lint, build, test, mutation, secret-scan]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-      - name: Install badge toolchain
-        run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@${{ env.GOSEC_VERSION }}
-          go install golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }}
-          go install github.com/go-gremlins/gremlins/cmd/gremlins@${{ env.GREMLINS_VERSION }}
-      # Recompute each metric and emit valid shields.io/endpoint JSON files.
-      # Pass = brightgreen, warning = yellow, fail = red. Files are staged into
-      # $RUNNER_TEMP/badges and published by the next step.
-      - name: Generate badge JSON
-        id: gen
-        env:
-          BADGE_DIR: ${{ runner.temp }}/badges
-        run: |
-          set -euo pipefail
-          mkdir -p "$BADGE_DIR"
-
-          # --- coverage (%) from `go test` ---
-          go test ./... -coverprofile=coverage.out
-          COV=$(go tool cover -func=coverage.out | awk '/^total:/{gsub(/%/,"",$3); print $3}')
-          COV_NUM=$(awk -v c="$COV" 'BEGIN{printf "%.1f", c}')
-          if awk -v c="$COV_NUM" 'BEGIN{exit !(c >= 95.0)}'; then
-            COV_COLOR=brightgreen
-          elif awk -v c="$COV_NUM" 'BEGIN{exit !(c >= 90.0)}'; then
-            COV_COLOR=yellow
-          else
-            COV_COLOR=red
-          fi
-          printf '{"schemaVersion":1,"label":"coverage","message":"%s%%","color":"%s"}\n' \
-            "$COV_NUM" "$COV_COLOR" > "$BADGE_DIR/coverage.json"
-
-          # --- gosec: "Issues : N" count; pass only when 0 issues ---
-          set +e
-          GOSEC_OUT=$(gosec ./... 2>&1)
-          GOSEC_RC=$?
-          set -e
-          GOSEC_ISSUES=$(printf '%s' "$GOSEC_OUT" | grep -oE 'Issues : [0-9]+' | awk '{print $3}' || true)
-          GOSEC_ISSUES=${GOSEC_ISSUES:-0}
-          if [ "$GOSEC_RC" -eq 0 ] && [ "$GOSEC_ISSUES" = "0" ]; then
-            GOSEC_MSG="pass (0 issues)"; GOSEC_COLOR=brightgreen
-          else
-            GOSEC_MSG="fail ($GOSEC_ISSUES issues)"; GOSEC_COLOR=red
-          fi
-          printf '{"schemaVersion":1,"label":"gosec","message":"%s","color":"%s"}\n' \
-            "$GOSEC_MSG" "$GOSEC_COLOR" > "$BADGE_DIR/gosec.json"
-
-          # --- govulncheck: pass only when "No vulnerabilities found." ---
-          set +e
-          VULN_OUT=$(govulncheck ./... 2>&1)
-          VULN_RC=$?
-          set -e
-          if [ "$VULN_RC" -eq 0 ] && printf '%s' "$VULN_OUT" | grep -q "No vulnerabilities found."; then
-            VULN_MSG="pass"; VULN_COLOR=brightgreen
-          else
-            VULN_MSG="fail"; VULN_COLOR=red
-          fi
-          printf '{"schemaVersion":1,"label":"govulncheck","message":"%s","color":"%s"}\n' \
-            "$VULN_MSG" "$VULN_COLOR" > "$BADGE_DIR/govulncheck.json"
-
-          # --- gremlins: exit 0 (>=80% efficacy / >=80% mcover) => pass ---
-          set +e
-          gremlins unleash ./... --threshold-efficacy=80 --threshold-mcover=80 >/dev/null 2>&1
-          GREMLINS_RC=$?
-          set -e
-          if [ "$GREMLINS_RC" -eq 0 ]; then
-            GREMLINS_MSG="pass"; GREMLINS_COLOR=brightgreen
-          else
-            GREMLINS_MSG="fail"; GREMLINS_COLOR=red
-          fi
-          printf '{"schemaVersion":1,"label":"gremlins","message":"%s","color":"%s"}\n' \
-            "$GREMLINS_MSG" "$GREMLINS_COLOR" > "$BADGE_DIR/gremlins.json"
-
-          echo "BADGE_DIR=$BADGE_DIR" >> "$GITHUB_OUTPUT"
-          echo "Generated badge files:"
-          ls -la "$BADGE_DIR"
-      # Publish to the dedicated `badges` branch. Idempotent: force-pushes the
-      # same JSON on repeated builds, and only commits when content changed.
-      - name: Publish badges to badges branch
-        env:
-          BADGE_DIR: ${{ steps.gen.outputs.BADGE_DIR }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Reset (or create) the `badges` branch at current HEAD, then keep only
-          # the badge JSON files on it (orphan-style, no master history).
-          git checkout -B badges
-          git rm -rf --ignore-unmatch . >/dev/null 2>&1 || true
-          mkdir -p badges
-          cp "$BADGE_DIR"/*.json badges/
-          git add badges
-          if git diff --cached --quiet; then
-            echo "Badge files unchanged; nothing to push"
-          else
-            git commit -m "chore: update live CI badges [skip ci]"
-            git push -f origin badges
-          fi
 
   # Stage 4 — release artifacts (tags + master): binaries on tags, images on
   # both. goreleaser release runs ONLY on git tags (B01/B04); `make
