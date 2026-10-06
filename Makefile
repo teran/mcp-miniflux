@@ -48,6 +48,15 @@ container-image: build ## build (or build+push when push=true) scratch image fro
 	cp dist/mcp-server_linux_amd64_v1/mcp-server mcp-server-linux-amd64
 	cp dist/mcp-server_linux_arm64_v8.0/mcp-server mcp-server-linux-arm64
 	@set -e; \
+	echo "==> Checking binaries are statically linked (required for FROM scratch)"; \
+	for b in mcp-server-linux-amd64 mcp-server-linux-arm64; do \
+		if ! file "$$b" | grep -q 'statically linked'; then \
+			echo "ERROR: $$b is NOT statically linked (is CGO_ENABLED=0?); cannot run on FROM scratch"; \
+			exit 1; \
+		fi; \
+		echo "   OK: $$b -> $$(file -b "$$b" | sed 's/,.*//')"; \
+	done; \
+	TAGS="-t $(IMAGE_NAME):$(IMAGE_TAG)"; \
 	TAGS="-t $(IMAGE_NAME):$(IMAGE_TAG)"; \
 	for t in $(subst $(comma), ,$(EXTRA_TAGS)); do \
 		[ -n "$$t" ] && TAGS="$$TAGS -t $(IMAGE_NAME):$$t"; \

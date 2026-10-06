@@ -9,6 +9,12 @@ project_name: mcp-miniflux
 
 env:
   - GO111MODULE=on
+  # Force a fully static binary regardless of the build host. Without this, a
+  # NATIVE build (e.g. linux/amd64 on the ubuntu CI runner, where a C toolchain
+  # is present) links against glibc (CGO_ENABLED=1 default), producing a
+  # dynamically-linked binary that cannot exec on the `FROM scratch` runtime
+  # (no glibc) -> "exec /mcp-server: no such file or directory" (B04/N18).
+  - CGO_ENABLED=0
 
 before:
   hooks:
