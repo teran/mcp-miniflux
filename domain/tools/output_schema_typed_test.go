@@ -3,9 +3,6 @@ package tools
 import (
 	"encoding/json"
 	"testing"
-	"time"
-
-	dmf "github.com/teran/mcp-miniflux/domain/miniflux"
 )
 
 // CONTRACT — every tool's OutputSchema() must ACCEPT the exact structured
@@ -25,8 +22,10 @@ import (
 // representative value is reduced to its JSON object form (map[string]any)
 // exactly as the go-sdk does before validation.
 
-// asObject reduces a realistic domain value v to the map[string]any JSON
-// object the go-sdk validates a tool's StructuredContent against.
+// asObject reduces a realistic representative value v to the map[string]any JSON
+// object the go-sdk validates a tool's StructuredContent against. It round-trips
+// through JSON exactly as the go-sdk does before validation. (For the plain-map
+// representatives below this is a pass-through, kept to mirror that path.)
 func asObject(t *testing.T, v any) map[string]any {
 	t.Helper()
 	b, err := json.Marshal(v)
@@ -41,48 +40,66 @@ func asObject(t *testing.T, v any) map[string]any {
 }
 
 func TestOutputSchemaTyped(t *testing.T) {
-	ts := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
+	// Representative structured outputs, as plain map[string]any literals that
+	// produce EXACTLY the JSON object each handler emits (M07/S09). These are
+	// written by hand to match the handler's marshalled output without pulling
+	// the domain types into this package (go-arch-lint forbids domain -> domain
+	// dependencies; see .go-arch-lint.yml).
 
-	// Realistic domain values matching exactly what each handler returns.
-	// Feed is redacted (username/password zeroed) per S02; both keys are still
-	// present in the emitted JSON as empty strings, so the schema must declare
-	// them.
-	feed := dmf.Feed{
-		ID:         1,
-		UserID:     2,
-		FeedURL:    "https://example.com/feed.xml",
-		SiteURL:    "https://example.com",
-		Title:      "Example",
-		Category:   dmf.CategoryRef{ID: 3, Title: "tech"},
-		Status:     "subscribed",
-		ErrorCount: 0,
-		// Username/Password redacted (S02).
+	// Feed is redacted (username/password zeroed) per S02; the struct has no
+	// omitempty, so both keys still appear in the emitted JSON as empty strings
+	// and the schema must declare them.
+	feed := map[string]any{
+		"id":          1,
+		"user_id":     2,
+		"feed_url":    "https://example.com/feed.xml",
+		"site_url":    "https://example.com",
+		"title":       "Example",
+		"category":    map[string]any{"id": 3, "title": "tech"},
+		"status":      "subscribed",
+		"error_count": 0,
+		"username":    "",
+		"password":    "",
 	}
 
-	category := dmf.Category{ID: 3, Title: "tech", FeedCount: 5, EntryCount: 100}
-
-	entry := dmf.Entry{
-		ID:          9,
-		UserID:      2,
-		FeedID:      3,
-		Status:      "unread",
-		Starred:     false,
-		Title:       "Post",
-		URL:         "https://example.com/post",
-		CommentsURL: "https://example.com/post#comments",
-		PublishedAt: ts,
-		CreatedAt:   ts,
-		Content:     "body",
+	category := map[string]any{
+		"id":          3,
+		"title":       "tech",
+		"feed_count":  5,
+		"entry_count": 100,
 	}
 
-	feedEntries := dmf.FeedEntries{Total: 1, Entries: []dmf.Entry{entry}}
-
-	counters := dmf.Counters{
-		Feeds:  map[string]int{"3": 5},
-		Totals: dmf.CounterTotals{Unread: 10, Read: 20},
+	// time.Time values marshal to RFC3339 strings.
+	entry := map[string]any{
+		"id":           9,
+		"user_id":      2,
+		"feed_id":      3,
+		"status":       "unread",
+		"starred":      false,
+		"title":        "Post",
+		"url":          "https://example.com/post",
+		"comments_url": "https://example.com/post#comments",
+		"published_at": "2024-01-02T03:04:05Z",
+		"created_at":   "2024-01-02T03:04:05Z",
+		"content":      "body",
 	}
 
-	me := dmf.Me{ID: 1, Username: "reader", IsAdmin: true, Theme: "sans"}
+	feedEntries := map[string]any{
+		"total":   1,
+		"entries": []any{entry},
+	}
+
+	counters := map[string]any{
+		"feeds":  map[string]any{"3": 5},
+		"totals": map[string]any{"unread": 10, "read": 20},
+	}
+
+	me := map[string]any{
+		"id":       1,
+		"username": "reader",
+		"is_admin": true,
+		"theme":    "sans",
+	}
 
 	ok := map[string]any{"ok": true}
 
@@ -91,16 +108,16 @@ func TestOutputSchemaTyped(t *testing.T) {
 		h      Handler
 		output any
 	}{
-		{name: "list_feeds", h: &ListFeeds{}, output: map[string]any{"feeds": []dmf.Feed{feed}}},
+		{name: "list_feeds", h: &ListFeeds{}, output: map[string]any{"feeds": []any{feed}}},
 		{name: "get_feed", h: &GetFeed{}, output: feed},
-		{name: "list_categories", h: &ListCategories{}, output: map[string]any{"categories": []dmf.Category{category}}},
+		{name: "list_categories", h: &ListCategories{}, output: map[string]any{"categories": []any{category}}},
 		{name: "list_entries", h: &ListEntries{}, output: feedEntries},
 		{name: "get_entry", h: &GetEntry{}, output: entry},
 		{name: "get_feed_entries", h: &GetFeedEntries{}, output: feedEntries},
 		{name: "get_counters", h: &GetCounters{}, output: counters},
 		{name: "get_me", h: &GetMe{}, output: me},
 		{name: "export_opml", h: &ExportOPML{}, output: map[string]any{"opml": "<opml version=\"1.0\"><head/></opml>"}},
-		{name: "discover_subscriptions", h: &DiscoverSubscriptions{}, output: map[string]any{"feeds": []dmf.DiscoveryResult{{URL: "https://a.example/rss", Title: "A", Type: "rss"}}}},
+		{name: "discover_subscriptions", h: &DiscoverSubscriptions{}, output: map[string]any{"feeds": []any{map[string]any{"url": "https://a.example/rss", "title": "A", "type": "rss"}}}},
 		{name: "create_feed", h: &CreateFeed{}, output: feed},
 		{name: "update_feed", h: &UpdateFeed{}, output: feed},
 		{name: "refresh_feed", h: &RefreshFeed{}, output: ok},
