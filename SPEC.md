@@ -599,6 +599,19 @@ Errors are classified into a taxonomy and mapped to MCP / JSON-RPC codes:
 | **Transient** | upstream 5xx / 429 / network error, timeout | `InternalError` / application error (JSON-RPC error) | **returned to the model**; **no silent retry** (X03/N26) |
 | **Auth** | upstream 401/403 | application error | returned to model, logged (no token in log, L05) |
 
+- **Two validation paths, both before any upstream call (S08):** argument
+  validation happens in **both** layers, and neither makes an upstream request
+  on invalid input. (1) **SDK schema validation** — the official go-sdk
+  (`infrastructure/mcp`, wrapping `mcp-go-sdk`) runs jsonschema validation of
+  `arguments` against `inputSchema` (`additionalProperties:false`) **before** it
+  invokes the handler; a schema rejection (e.g. an unexpected property or an
+  out-of-schema type) surfaces as a `CallToolResult` with `IsError: true`, not as
+  a JSON-RPC error object. (2) **Manual handler validation** —
+  `application/handlers/base.go` re-checks required fields and types
+  (`invalidParams`, `asInt`/`stringArg`/`boolArg`/`timeArg`, `requireConfirm`)
+  and returns a proper JSON-RPC `InvalidParams` (-32602) error. Both occur before
+  execution and therefore before any upstream call.
+
 - **No silent retry (X03/N26):** every upstream failure — including rate-limit
   `429` — is **returned to the model** and **logged** (no secrets, L05/L08);
   there is no retry/backoff layer (L02GO). Timeouts/contexts are explicit on
@@ -653,7 +666,12 @@ request). The observability liveness probe therefore reflects process liveness,
   never raw free-form text.
 - **S08/N22 — Strict input validation.** Every `tools/call` validates
   arguments against `inputSchema` (`additionalProperties:false`, strict types,
-  limits) **before** execution; invalid → `InvalidParams`. (See §4.)
+  limits) **before** execution; invalid → `InvalidParams`. Schema validation is
+  enforced by the official go-sdk against `inputSchema` before the handler runs:
+  a schema rejection surfaces as an `IsError` `CallToolResult`, while
+  handler-level validation (`application/handlers/base.go` helpers) returns a
+  JSON-RPC `InvalidParams` (-32602). Both paths reject **before any upstream
+  call**. (See §4.)
 - **S09/N23 — Output validation & sanitization.** Output conforms to each
   tool's `outputSchema`; ANSI/control escape sequences are filtered from text
   output.
@@ -876,20 +894,20 @@ user (UID 65534), per-platform `COPY` of the release binary via `TARGETARCH`
 `ENTRYPOINT ["/mcp-server", "-mode", "http"]` — no TLS in-process (N01/S01;
 reverse proxy terminates), logs to stdout (L01).
 
-**B02 — embedded `appVersion` vs image tag (documented behaviour).** `make
-build` runs **goreleaser snapshot** (`goreleaser build --snapshot`), which
-labels the artifact version as a **snapshot**, not the git tag. The image is
-built **from that snapshot binary** (`make container-image` → `make build`),
-so for an untagged `master` build the binary's embedded `appVersion` is the
-snapshot string while the image carries the `master-{commit}` tag set (R04).
-For a **tagged release**, the intent is that the embedded `appVersion` equals
-the image's git tag `X` (R03): the release job should propagate the tag into
-the build so `goreleaser` embeds `{{ .Version }} == X` (e.g. via
-`GORELEASER_CURRENT_TAG`/a `VERSION` variable passed through `make
-container-image`). Until that wiring is in place, a TODO in the release
-workflow tracks it; the startup banner (§9, B05) therefore reports the
-embedded version, which may lag the image tag on snapshot builds — this is
-expected and not a defect in the binary.
+**B02 — embedded `appVersion` vs image tag (closed).** `make build` runs
+**goreleaser snapshot** (`goreleaser build --snapshot`), which by default labels
+the artifact version as a **snapshot**, not the git tag. To close the gap the
+release workflow now propagates the real version through `make container-image`
+via the `VERSION` make variable (R07/N31 — still bound to `make <target>`): on a
+**tagged release** (R03) `VERSION` is the git tag `X`; on a **master** build
+(R04) it is the `master-{commit}` image tag. The Makefile forwards `VERSION` to
+goreleaser as `GORELEASER_CURRENT_TAG` (there is no `--build-version` flag on
+`goreleaser build`), so `{{ .Version }}` embeds that value in the image binary.
+Because the build is still a snapshot, the embedded `appVersion` is rendered as
+`X-SNAPSHOT-{commit}` — it carries the real tag `X` (or `master-{commit}`) rather
+than a bare snapshot string; the upstream `make release` tag-only binary
+(`goreleaser release` on a real tag) embeds exactly `X`. The startup banner
+(§9, B05) therefore reports the real release version on tagged releases.
 
 ### 11.5 e2e tests — N/A (T02/C04/C09GO/N07GO)
 
