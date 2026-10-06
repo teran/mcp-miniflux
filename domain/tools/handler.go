@@ -68,9 +68,22 @@ func integerArrayProp(maxLen int) map[string]any {
 	}
 }
 
+// permissiveObjectSchema builds a PERMISSIVE JSON object schema: it asserts
+// only type:object and intentionally does NOT set additionalProperties:false.
+// Per JSON Schema, omitting additionalProperties defaults it to true, so any
+// object the application layer produces (Miniflux-shaped structs with
+// arbitrary fields, nested objects, arrays) is accepted. It is used for the
+// generic output schema (S09) where outputs are refined by the application
+// layer. Do NOT use this for input schemas (S08 requires
+// additionalProperties:false) or for the typed discover_subscriptions output
+// schema — those use objectSchema().
+func permissiveObjectSchema() *map[string]any {
+	return &map[string]any{"type": "object"}
+}
+
 // outputSchema builds a permissive output schema (S09 requires every tool to
 // declare one). Outputs are refined by the application layer; here we assert an
 // object so the contract is complete and non-nil.
 func outputSchema() *map[string]any {
-	return objectSchema(nil, nil)
+	return permissiveObjectSchema()
 }
