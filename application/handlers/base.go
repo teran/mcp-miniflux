@@ -237,14 +237,17 @@ func textContent(text string) *mcp.TextContent {
 }
 
 // jsonResult marshals v (with secret fields redacted, S02) into a text content
-// result.
+// result and populates StructuredContent with the same redacted value
+// (SEP-2106: tools declaring an outputSchema must return structured content).
 func jsonResult(v any) (*mcp.CallToolResult, error) {
-	data, err := marshalJSON(v)
+	redacted := dmf.Redact(v)
+	data, err := json.Marshal(redacted)
 	if err != nil {
 		return nil, err
 	}
 	return &mcp.CallToolResult{
-		Content: []mcp.Content{textContent(string(data))},
+		Content:           []mcp.Content{textContent(string(data))},
+		StructuredContent: redacted,
 	}, nil
 }
 
@@ -252,7 +255,8 @@ func jsonResult(v any) (*mcp.CallToolResult, error) {
 // payload.
 func okResult() *mcp.CallToolResult {
 	return &mcp.CallToolResult{
-		Content: []mcp.Content{textContent(`{"ok":true}`)},
+		Content:           []mcp.Content{textContent(`{"ok":true}`)},
+		StructuredContent: map[string]any{"ok": true},
 	}
 }
 
