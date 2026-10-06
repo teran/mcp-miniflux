@@ -8,6 +8,12 @@
 APP_NAME  ?= mcp-miniflux
 BINARY    ?= mcp-server
 GO        ?= go
+# Real release version to embed as appVersion (R03/B02). Empty by default ->
+# `make build` keeps goreleaser's default snapshot version. CI sets this to the
+# git tag (tagged release) or the master-{commit} image tag so the container
+# image binary embeds the real version, not a bare snapshot string. Forwarded to
+# goreleaser via GORELEASER_CURRENT_TAG (there is no --build-version flag).
+VERSION   ?=
 
 # Container image (SPEC §11.4 R01/B03/B04, R03/R04 multi-tag scheme)
 IMAGE_NAME ?= ghcr.io/teran/mcp-miniflux
@@ -39,7 +45,7 @@ test: ## go test -race with coverage >= 95% gate (C01/C04GO) — fails below 95%
 	@$(GO) tool cover -func=coverage.out | awk '/^total:/ { cov = $$3 + 0; if (cov < 95.0) { printf "FAIL: total coverage %.2f%% < 95%%\n", cov; exit 1 } else { printf "PASS: total coverage %.2f%%\n", cov } }'
 
 build: ## goreleaser -> single binary per platform into dist/ (B01/B02/B04)
-	goreleaser build --snapshot --clean
+	$(if $(VERSION),GORELEASER_CURRENT_TAG=$(VERSION) )goreleaser build --snapshot --clean
 
 release: ## goreleaser release --clean -> publish binary artifacts to GitHub Release (B01/B02)
 	goreleaser release --clean
