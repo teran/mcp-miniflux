@@ -33,7 +33,9 @@ func (ListFeeds) InputSchema() *map[string]any {
 	}, nil)
 }
 
-func (ListFeeds) OutputSchema() *map[string]any { return outputSchema() }
+func (ListFeeds) OutputSchema() *map[string]any {
+	return listSchema("feeds", *objectSchema(feedProps(), nil))
+}
 
 func (ListFeeds) Annotations() mcp.ToolAnnotations {
 	return mcp.ToolAnnotations{
@@ -56,7 +58,7 @@ func (GetFeed) InputSchema() *map[string]any {
 	return objectSchema(map[string]any{"feed_id": integerProp()}, []string{"feed_id"})
 }
 
-func (GetFeed) OutputSchema() *map[string]any { return outputSchema() }
+func (GetFeed) OutputSchema() *map[string]any { return feedSchema() }
 
 func (GetFeed) Annotations() mcp.ToolAnnotations {
 	return mcp.ToolAnnotations{
@@ -79,7 +81,9 @@ func (ListCategories) InputSchema() *map[string]any {
 	return objectSchema(nil, nil)
 }
 
-func (ListCategories) OutputSchema() *map[string]any { return outputSchema() }
+func (ListCategories) OutputSchema() *map[string]any {
+	return listSchema("categories", *objectSchema(categoryProps(), nil))
+}
 
 func (ListCategories) Annotations() mcp.ToolAnnotations {
 	return mcp.ToolAnnotations{
@@ -104,7 +108,7 @@ func (ListEntries) InputSchema() *map[string]any {
 	return objectSchema(props, nil)
 }
 
-func (ListEntries) OutputSchema() *map[string]any { return outputSchema() }
+func (ListEntries) OutputSchema() *map[string]any { return feedEntriesSchema() }
 
 func (ListEntries) Annotations() mcp.ToolAnnotations {
 	return mcp.ToolAnnotations{
@@ -127,7 +131,7 @@ func (GetEntry) InputSchema() *map[string]any {
 	return objectSchema(map[string]any{"entry_id": integerProp()}, []string{"entry_id"})
 }
 
-func (GetEntry) OutputSchema() *map[string]any { return outputSchema() }
+func (GetEntry) OutputSchema() *map[string]any { return entrySchema() }
 
 func (GetEntry) Annotations() mcp.ToolAnnotations {
 	return mcp.ToolAnnotations{
@@ -152,7 +156,7 @@ func (GetFeedEntries) InputSchema() *map[string]any {
 	return objectSchema(props, []string{"feed_id"})
 }
 
-func (GetFeedEntries) OutputSchema() *map[string]any { return outputSchema() }
+func (GetFeedEntries) OutputSchema() *map[string]any { return feedEntriesSchema() }
 
 func (GetFeedEntries) Annotations() mcp.ToolAnnotations {
 	return mcp.ToolAnnotations{
@@ -173,7 +177,7 @@ func (GetCounters) Name() string { return "get_counters" }
 
 func (GetCounters) InputSchema() *map[string]any { return objectSchema(nil, nil) }
 
-func (GetCounters) OutputSchema() *map[string]any { return outputSchema() }
+func (GetCounters) OutputSchema() *map[string]any { return objectSchema(countersProps(), nil) }
 
 func (GetCounters) Annotations() mcp.ToolAnnotations {
 	return mcp.ToolAnnotations{
@@ -194,7 +198,7 @@ func (GetMe) Name() string { return "get_me" }
 
 func (GetMe) InputSchema() *map[string]any { return objectSchema(nil, nil) }
 
-func (GetMe) OutputSchema() *map[string]any { return outputSchema() }
+func (GetMe) OutputSchema() *map[string]any { return objectSchema(meProps(), nil) }
 
 func (GetMe) Annotations() mcp.ToolAnnotations {
 	return mcp.ToolAnnotations{
@@ -215,7 +219,7 @@ func (ExportOPML) Name() string { return "export_opml" }
 
 func (ExportOPML) InputSchema() *map[string]any { return objectSchema(nil, nil) }
 
-func (ExportOPML) OutputSchema() *map[string]any { return outputSchema() }
+func (ExportOPML) OutputSchema() *map[string]any { return objectSchema(opmlProps(), nil) }
 
 func (ExportOPML) Annotations() mcp.ToolAnnotations {
 	return mcp.ToolAnnotations{

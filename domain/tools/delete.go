@@ -16,7 +16,7 @@ func (DeleteFeed) InputSchema() *map[string]any {
 	}, []string{"feed_id", "confirm"})
 }
 
-func (DeleteFeed) OutputSchema() *map[string]any { return outputSchema() }
+func (DeleteFeed) OutputSchema() *map[string]any { return okSchema() }
 
 func (DeleteFeed) Annotations() mcp.ToolAnnotations {
 	return mcp.ToolAnnotations{
@@ -42,7 +42,7 @@ func (DeleteCategory) InputSchema() *map[string]any {
 	}, []string{"category_id", "confirm"})
 }
 
-func (DeleteCategory) OutputSchema() *map[string]any { return outputSchema() }
+func (DeleteCategory) OutputSchema() *map[string]any { return okSchema() }
 
 func (DeleteCategory) Annotations() mcp.ToolAnnotations {
 	return mcp.ToolAnnotations{
@@ -68,7 +68,7 @@ func (FlushHistory) InputSchema() *map[string]any {
 	}, []string{"confirm"})
 }
 
-func (FlushHistory) OutputSchema() *map[string]any { return outputSchema() }
+func (FlushHistory) OutputSchema() *map[string]any { return okSchema() }
 
 func (FlushHistory) Annotations() mcp.ToolAnnotations {
 	return mcp.ToolAnnotations{
