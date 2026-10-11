@@ -860,7 +860,7 @@ The project pins **latest-stable** versions (single source of truth
 
 | Component | Version |
 |-----------|---------|
-| Go | **1.27.1** (`go 1.27.1` in `go.mod`; CI `GO_VERSION: "1.27"`) (C01GO/N01GO) |
+| Go | **1.27.2** (CI `GO_VERSION: "1.27.2"`; `go.mod` `go 1.27.1` is the floor, toolchain resolves to 1.27.2) (C01GO/N01GO) |
 | MCP Go SDK | **v1.8.0** (`github.com/modelcontextprotocol/go-sdk`) (M01) |
 | resty.dev/v3 | **v3.0.0-rc.4** (L02GO; no stable yet — latest available) |
 | prometheus client_golang | **v1.24.1** (O01–O04) |
