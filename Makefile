@@ -63,7 +63,6 @@ container-image: build ## build (or build+push when push=true) scratch image fro
 		echo "   OK: $$b -> $$(file -b "$$b" | sed 's/,.*//')"; \
 	done; \
 	TAGS="-t $(IMAGE_NAME):$(IMAGE_TAG)"; \
-	TAGS="-t $(IMAGE_NAME):$(IMAGE_TAG)"; \
 	for t in $(subst $(comma), ,$(EXTRA_TAGS)); do \
 		[ -n "$$t" ] && TAGS="$$TAGS -t $(IMAGE_NAME):$$t"; \
 	done; \
