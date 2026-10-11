@@ -21,7 +21,9 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: "1.27"
+  # Pin the exact Go patch release. Go 1.27.2 fixes the standard-library
+  # net/http vulnerabilities that govulncheck flags in 1.27.1.
+  GO_VERSION: "1.27.2"
   # Pinned toolchain versions (single source of truth: reference/versions.md)
   GREMLINS_VERSION: "v0.6.0"
   GITLEAKS_VERSION: "v8.30.1"
@@ -31,7 +33,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Stage 1 — linters (make lint): golangci-lint + vet + gosec + govulncheck + go-arch-lint
+  # Stage 1 — linters (make lint): golangci-lint (incl. gosec) + vet + govulncheck + go-arch-lint
   lint:
     name: Linters (make lint)
     runs-on: ubuntu-latest
@@ -44,7 +46,6 @@ jobs:
       - name: Install toolchain
         run: |
           go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
-          go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
           go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
           go install github.com/fe3dback/go-arch-lint@v1.19.0
       - name: Run make lint

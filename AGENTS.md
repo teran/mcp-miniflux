@@ -39,7 +39,7 @@ CI binds to the **build-system interface**: it calls `make <target>`, not raw
 - `make build` — **goreleaser** → single binary per platform into `dist/`.
 - `make test` — `go test -race` + **coverage ≥ 95% gate**; **fails below 95%**.
   Never ship a change that lowers coverage; add tests with the code.
-- `make lint` — golangci-lint (incl. gofmt/gofumpt), `go vet`, gosec,
+- `make lint` — golangci-lint (incl. gofmt/gofumpt/gosec), `go vet`,
   govulncheck, go-arch-lint. **Findings are FIXED, never suppressed** (no blanket
   `#nosec`, no default excludes).
 - `make container-image [push=true]` — build-only / build+push the image **from
@@ -116,7 +116,7 @@ A change is done only when **all** of the following hold:
 
 - Tests were written first (TDD); unit tests pass with **coverage ≥ 95%**
   (`make test`).
-- **Lint clean** (`make lint`): golangci-lint, `go vet`, gosec, govulncheck,
+- **Lint clean** (`make lint`): golangci-lint (incl. gosec), `go vet`, govulncheck,
   go-arch-lint — **no findings left unfixed, none suppressed**.
 - **gremlins mutation gate** ≥ 80/80 passes (dedicated CI job).
 - **gitleaks** secret scan over git history passes; no secrets committed.
