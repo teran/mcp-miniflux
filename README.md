@@ -214,7 +214,7 @@ context), **@developer** writes the implementation (isolated context).
 
 CI binds to the build-system interface (`make <target>`) and enforces:
 
-- `make lint` — golangci-lint + `go vet` + **gosec** + **govulncheck** +
+- `make lint` — golangci-lint (incl. **gosec**) + `go vet` + **govulncheck** +
   go-arch-lint (findings are **fixed**, never suppressed).
 - `make test` — `go test -race` with a **coverage ≥ 95% gate** (build fails
   below 95%).

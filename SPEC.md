@@ -812,7 +812,7 @@ startup-time or probe-time ping (A02/N35).
 The Makefile exposes the standard, language-agnostic interface that CI binds to
 (no raw `go ...` calls in CI):
 
-- `make lint` — golangci-lint (incl. gofmt/gofumpt), `go vet`, gosec,
+- `make lint` — golangci-lint (incl. gofmt/gofumpt/gosec), `go vet`,
   govulncheck, go-arch-lint (C03GO/C05GO/C06GO/C07GO).
 - `make test` — `go test -race` + **coverage ≥ 95% gate** (C01/C04GO), failing
   the build below 95%.
@@ -830,7 +830,7 @@ mutation (C02/C08GO) and **gitleaks** secret scan (C03/N28).
 **Stages:** linters → build → tests → release artifacts. All bound to
 `make <target>` (R07/N31); no job invokes an undeclared optional target.
 
-- **Linters (lint):** `make lint` (golangci-lint + vet + gosec + govulncheck +
+- **Linters (lint):** `make lint` (golangci-lint [incl. gosec] + vet + govulncheck +
   go-arch-lint). Findings **fixed, not suppressed** (C05GO/C06GO/N02GO).
 - **Mutation gate (C02/C08GO/N03GO):** dedicated hard gate —
   `gremlins unleash ./... --threshold-efficacy=80 --threshold-mcover=80`,
