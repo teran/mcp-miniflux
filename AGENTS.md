@@ -17,7 +17,7 @@ operating manual and must never contradict it.
   through** to Miniflux as `X-Auth-Token`; if absent it falls back to the
   `MINIFLUX_API_TOKEN` env var. **No OAuth2, no in-server TLS** (reverse proxy's
   job). Observability lives on a separate `:8081` (`INTERNAL_ADDR`).
-- **Implementation language:** **Go 1.27.1** (see `go.mod` / CI `GO_VERSION`).
+- **Implementation language:** **Go** (`go.mod` `go 1.27.1` floor; CI toolchain `GO_VERSION: "1.27.2"`).
 - **Layout:** layered DDD/Clean with **top-level named packages** — `internal/`
   is intentionally **NOT used** (no visibility restriction justified, recorded
   in SPEC §6.1). Top-level packages: `cmd/mcp-miniflux/main.go` (thin composition
@@ -26,8 +26,9 @@ operating manual and must never contradict it.
   observability). Layer edges are enforced by **go-arch-lint** (`.go-arch-lint.yml`):
   `cmd → application/infrastructure`, `application → domain`,
   `infrastructure → domain`, `domain → (nothing)`. Any other edge fails CI.
-- Pinned versions (single source of truth is `reference/versions.md`): Go 1.27.1,
-  MCP go-sdk v1.8.0, resty.dev/v3 v3.0.0-rc.4, logrus v1.10.2, prometheus
+- Pinned versions (single source of truth is `reference/versions.md`): Go 1.27.2
+  (CI toolchain; `go.mod` `go 1.27.1` is the floor), MCP go-sdk v1.8.0,
+  resty.dev/v3 v3.0.0-rc.4, logrus v1.10.2, prometheus
   client_golang v1.24.1, envconfig v1.4.0. **Staleness is a defect** — upgrade,
   never suppress.
 
