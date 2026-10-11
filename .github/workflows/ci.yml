@@ -21,7 +21,11 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: "1.27"
+  # Pin the exact Go patch release. The floating "1.27" resolved to Go 1.27.2,
+  # which emits export data format v5 that golangci-lint v2.14.0 (built against
+  # export data v4) cannot read, breaking `make lint`. Go 1.27.1 is the latest
+  # patch compatible with golangci-lint v2.14.0. See reference/versions.md.
+  GO_VERSION: "1.27.1"
   # Pinned toolchain versions (single source of truth: reference/versions.md)
   GREMLINS_VERSION: "v0.6.0"
   GITLEAKS_VERSION: "v8.30.1"

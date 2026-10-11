@@ -14,7 +14,7 @@ exactly for the build and CI to be consistent.
 
 | Component | Version | Reference |
 |-----------|---------|-----------|
-| Go | **1.27.1** (`go 1.27.1` in `go.mod`; CI `GO_VERSION: "1.27"`) | C01GO/N01GO |
+| Go | **1.27.1** (`go 1.27.1` in `go.mod`; CI `GO_VERSION: "1.27.1"` — pinned to the exact patch because the floating `"1.27"` resolved to 1.27.2, whose export data v5 breaks golangci-lint 2.14.0) | C01GO/N01GO |
 | MCP Go SDK | **v1.8.0** (`github.com/modelcontextprotocol/go-sdk`) | M01 |
 | resty.dev/v3 | **v3.0.0-rc.4** (L02GO; no stable yet — latest available) | L02GO |
 | prometheus client_golang | **v1.24.1** (O01–O04) | O01–O04 |
