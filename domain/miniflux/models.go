@@ -36,6 +36,7 @@ type Feed struct {
 func (f Feed) Redacted() Feed {
 	f.Username = ""
 	f.Password = ""
+
 	return f
 }
 
@@ -107,6 +108,7 @@ func (c *Counters) UnmarshalJSON(data []byte) error {
 
 	c.Feeds = feeds
 	c.Totals = CounterTotals{Read: readTotal, Unread: unreadTotal}
+
 	return nil
 }
 

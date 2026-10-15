@@ -281,7 +281,7 @@ func newHarness(t *testing.T) *harness {
 
 	// Application layer wired exactly as main.go does.
 	toolLogger := func(ctx context.Context, tool string, args map[string]any, source string, duration time.Duration, outcome string) {
-		logging.LogToolCall(logging.WithContext(log, ctx), tool, args, source, duration, outcome)
+		logging.LogToolCall(logging.WithContext(ctx, log), tool, args, source, duration, outcome)
 	}
 	deps := application.Deps{
 		Client: port,

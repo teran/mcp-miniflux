@@ -13,6 +13,7 @@ type ListFeedsHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the list_feeds use case.
 func (h ListFeedsHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	var categoryID *int
 	if v, ok := args["category_id"]; ok {
@@ -35,6 +36,7 @@ func (h ListFeedsHandler) Call(ctx context.Context, args map[string]any) (*mcp.C
 	if err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return jsonResult(map[string]any{"feeds": feeds})
 }
 
@@ -43,6 +45,7 @@ type GetFeedHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the get_feed use case.
 func (h GetFeedHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	id, err := asInt("feed_id", args["feed_id"])
 	if err != nil {
@@ -52,6 +55,7 @@ func (h GetFeedHandler) Call(ctx context.Context, args map[string]any) (*mcp.Cal
 	if err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return jsonResult(feed)
 }
 
@@ -60,11 +64,13 @@ type ListCategoriesHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the list_categories use case.
 func (h ListCategoriesHandler) Call(ctx context.Context, _ map[string]any) (*mcp.CallToolResult, error) {
 	cats, err := h.Client.ListCategories(ctx)
 	if err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return jsonResult(map[string]any{"categories": cats})
 }
 
@@ -73,6 +79,7 @@ type ListEntriesHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the list_entries use case.
 func (h ListEntriesHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	filter, err := entryFilter(args, true)
 	if err != nil {
@@ -82,6 +89,7 @@ func (h ListEntriesHandler) Call(ctx context.Context, args map[string]any) (*mcp
 	if err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return jsonResult(out)
 }
 
@@ -90,6 +98,7 @@ type GetEntryHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the get_entry use case.
 func (h GetEntryHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	id, err := asInt("entry_id", args["entry_id"])
 	if err != nil {
@@ -99,6 +108,7 @@ func (h GetEntryHandler) Call(ctx context.Context, args map[string]any) (*mcp.Ca
 	if err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return jsonResult(entry)
 }
 
@@ -107,6 +117,7 @@ type GetFeedEntriesHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the get_feed_entries use case.
 func (h GetFeedEntriesHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	feedID, err := asInt("feed_id", args["feed_id"])
 	if err != nil {
@@ -120,6 +131,7 @@ func (h GetFeedEntriesHandler) Call(ctx context.Context, args map[string]any) (*
 	if err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return jsonResult(out)
 }
 
@@ -128,11 +140,13 @@ type GetCountersHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the get_counters use case.
 func (h GetCountersHandler) Call(ctx context.Context, _ map[string]any) (*mcp.CallToolResult, error) {
 	counters, err := h.Client.GetCounters(ctx)
 	if err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return jsonResult(counters)
 }
 
@@ -141,11 +155,13 @@ type GetMeHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the get_me use case.
 func (h GetMeHandler) Call(ctx context.Context, _ map[string]any) (*mcp.CallToolResult, error) {
 	me, err := h.Client.GetMe(ctx)
 	if err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return jsonResult(me)
 }
 
@@ -155,11 +171,13 @@ type ExportOPMLHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the export_opml use case.
 func (h ExportOPMLHandler) Call(ctx context.Context, _ map[string]any) (*mcp.CallToolResult, error) {
 	doc, err := h.Client.ExportOPML(ctx)
 	if err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return jsonResult(map[string]any{"opml": doc})
 }
 
@@ -171,6 +189,7 @@ type DiscoverSubscriptionsHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the discover_subscriptions use case.
 func (h DiscoverSubscriptionsHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	target, err := stringArg("url", args)
 	if err != nil {
@@ -192,6 +211,7 @@ func (h DiscoverSubscriptionsHandler) Call(ctx context.Context, args map[string]
 	if err != nil {
 		return nil, err
 	}
+
 	return &mcp.CallToolResult{
 		Content:           []mcp.Content{textContent(string(data))},
 		StructuredContent: redacted,

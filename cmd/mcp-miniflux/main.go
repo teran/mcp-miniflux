@@ -48,15 +48,32 @@ const serverInstructions = "mcp-miniflux exposes the Miniflux RSS reader API as 
 	"Authentication is passed through via the inbound X-Auth-Token header."
 
 func main() {
+	os.Exit(runMain())
+}
+
+// runMain wires the signal-handling context, runs the composition root and
+// returns a process exit code (0 on success, 1 on failure). The deferred stop()
+// is released before os.Exit in main, so graceful shutdown is never skipped.
+func runMain() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	if err := run(ctx, os.Args[1:]); err != nil {
 		// The token and other secrets are never logged/printed (L05).
 		fmt.Fprintln(os.Stderr, "mcp-miniflux:", err)
-		os.Exit(1)
+
+		return 1
 	}
+
+	return 0
 }
+
+// Duration bounds used by the composition root (mnd-friendly named constants).
+const (
+	upstreamTimeout         = 30 * time.Second // client per-call timeout (X03/N26)
+	serverReadHeaderTimeout = 5 * time.Second  // HTTP server header read timeout
+	shutdownTimeout         = 5 * time.Second  // graceful shutdown drain timeout
+)
 
 // run is the testable composition root. It returns an error to fail fast on any
 // wiring error (config, logger, client) without leaking secrets.
@@ -99,7 +116,7 @@ func run(ctx context.Context, args []string) error {
 		miniflux.WithDefaultToken(cfg.MinifluxAPIToken),
 		miniflux.WithMetrics(upstreamMetrics), // O03 upstream metrics
 		miniflux.WithLogger(log),              // L09/L04GO outbound request log
-		miniflux.WithTimeout(30*time.Second),
+		miniflux.WithTimeout(upstreamTimeout),
 	)
 	if err != nil {
 		return fmt.Errorf("build miniflux client: %w", err)
@@ -125,8 +142,10 @@ func run(ctx context.Context, args []string) error {
 
 	if mode == "http" {
 		handler := mcpmcp.NewStreamableHandler(srv, sdkLogger)
+
 		return serveHTTP(ctx, handler, cfg.ListenAddr, log)
 	}
+
 	return mcpmcp.RunStdio(ctx, srv)
 }
 
@@ -153,6 +172,7 @@ func parseMode(args []string) (string, error) {
 	if mode != "http" && mode != "stdio" {
 		return "", fmt.Errorf("invalid -mode %q: want http or stdio", mode)
 	}
+
 	return mode, nil
 }
 
@@ -169,6 +189,7 @@ func buildLogger(mode, level, format, filename string) (*logrus.Logger, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build logger: %w", err)
 	}
+
 	return l, nil
 }
 
@@ -185,12 +206,27 @@ func emitBanner(l *logrus.Logger, name, version, commit, ts string) {
 // port (L08): each access-log line is emitted on an entry bound to ctx so the
 // request_id (L09) is attached, with the already-redacted args. When l is nil
 // (logging disabled) it returns nil so the registry skips access logging.
-func makeToolLogger(l *logrus.Logger) func(ctx context.Context, tool string, args map[string]any, source string, duration time.Duration, outcome string) {
+func makeToolLogger(l *logrus.Logger) func(
+	ctx context.Context,
+	tool string,
+	args map[string]any,
+	source string,
+	duration time.Duration,
+	outcome string,
+) {
 	if l == nil {
 		return nil
 	}
-	return func(ctx context.Context, tool string, args map[string]any, source string, duration time.Duration, outcome string) {
-		logging.LogToolCall(logging.WithContext(l, ctx), tool, args, source, duration, outcome)
+
+	return func(
+		ctx context.Context,
+		tool string,
+		args map[string]any,
+		source string,
+		duration time.Duration,
+		outcome string,
+	) {
+		logging.LogToolCall(logging.WithContext(ctx, l), tool, args, source, duration, outcome)
 	}
 }
 
@@ -201,7 +237,7 @@ func serveHTTP(ctx context.Context, handler http.Handler, addr string, log *logr
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           handler,
-		ReadHeaderTimeout: 5 * time.Second,
+		ReadHeaderTimeout: serverReadHeaderTimeout,
 	}
 
 	errCh := make(chan error, 1)
@@ -212,14 +248,19 @@ func serveHTTP(ctx context.Context, handler http.Handler, addr string, log *logr
 
 	select {
 	case <-ctx.Done():
-		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		// Derive the shutdown deadline from ctx (so contextcheck stays happy)
+		// but WithoutCancel so the drain is not immediately cancelled by the
+		// signal that just fired.
+		shutCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 		defer cancel()
 		log.Info("shutting down mcp streamable http server")
+
 		return srv.Shutdown(shutCtx)
 	case err := <-errCh:
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
+
 		return fmt.Errorf("mcp http server: %w", err)
 	}
 }

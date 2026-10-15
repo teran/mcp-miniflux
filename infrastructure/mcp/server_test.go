@@ -74,7 +74,7 @@ func TestStreamableHandlerInitializes(t *testing.T) {
 func TestWithRequestIDUsesHeader(t *testing.T) {
 	var got string
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got = requestid.RequestIDFromContext(r.Context())
+		got = requestid.FromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	})
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
@@ -90,7 +90,7 @@ func TestWithRequestIDUsesHeader(t *testing.T) {
 func TestWithRequestIDGeneratesWhenAbsent(t *testing.T) {
 	var got string
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got = requestid.RequestIDFromContext(r.Context())
+		got = requestid.FromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	})
 	req := httptest.NewRequest(http.MethodPost, "/", nil)

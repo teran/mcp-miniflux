@@ -155,7 +155,7 @@ func TestToolCallHandlerReturnsHandlerError(t *testing.T) {
 func TestToolCallHandlerGeneratesRequestIDWhenAbsent(t *testing.T) {
 	var gotID string
 	logger := func(ctx context.Context, _ string, _ map[string]any, _ string, _ time.Duration, _ string) {
-		gotID = requestid.RequestIDFromContext(ctx)
+		gotID = requestid.FromContext(ctx)
 	}
 	fh := &fakeHandler{}
 	h := toolCallHandler("get_me", fh, logger)
@@ -172,7 +172,7 @@ func TestToolCallHandlerGeneratesRequestIDWhenAbsent(t *testing.T) {
 func TestToolCallHandlerPreservesExistingRequestID(t *testing.T) {
 	var gotID string
 	logger := func(ctx context.Context, _ string, _ map[string]any, _ string, _ time.Duration, _ string) {
-		gotID = requestid.RequestIDFromContext(ctx)
+		gotID = requestid.FromContext(ctx)
 	}
 	fh := &fakeHandler{}
 	h := toolCallHandler("get_me", fh, logger)

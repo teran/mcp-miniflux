@@ -44,6 +44,7 @@ func registerTool(server *mcp.Server, rt app.Tool, logger app.ToolLogger) {
 // annotations, description from the instructions).
 func buildTool(def app.Definition) *mcp.Tool {
 	ann := def.Annotations()
+
 	return &mcp.Tool{
 		Name:         def.Name(),
 		Description:  def.Instructions(),
@@ -69,7 +70,7 @@ func toolCallHandler(name string, h app.Handler, logger app.ToolLogger) mcp.Tool
 
 		// L09: guarantee a request_id on the access log even when the transport
 		// carried none (e.g. stdio mode); preserve an existing one.
-		if requestid.RequestIDFromContext(ctx) == "" {
+		if requestid.FromContext(ctx) == "" {
 			ctx = requestid.WithRequestID(ctx, newRequestID())
 		}
 
@@ -90,6 +91,7 @@ func toolCallHandler(name string, h app.Handler, logger app.ToolLogger) mcp.Tool
 		if callErr != nil {
 			return nil, callErr
 		}
+
 		return res, nil
 	}
 }
@@ -100,6 +102,7 @@ func requestHeaders(req *mcp.CallToolRequest) http.Header {
 	if req == nil || req.Extra == nil || req.Extra.Header == nil {
 		return http.Header{}
 	}
+
 	return req.Extra.Header
 }
 
@@ -113,15 +116,20 @@ func headerValue(hdr http.Header, name string) string {
 			return vv[0]
 		}
 	}
+
 	return ""
 }
+
+// requestIDBytes is the number of random bytes in a generated request id (16
+// bytes = 32 hex chars, L09).
+const requestIDBytes = 16
 
 // resolveSource resolves the access-log `source` from the inbound request
 // headers (L08): X-Real-IP takes precedence, then X-Forwarded-For (leftmost
 // entry), else the fallback default.
 func resolveSource(hdr http.Header) string {
-	if real := strings.TrimSpace(headerValue(hdr, "X-Real-IP")); real != "" {
-		return real
+	if realIP := strings.TrimSpace(headerValue(hdr, "X-Real-IP")); realIP != "" {
+		return realIP
 	}
 	if fwd := strings.TrimSpace(headerValue(hdr, "X-Forwarded-For")); fwd != "" {
 		if i := strings.IndexByte(fwd, ','); i >= 0 {
@@ -131,18 +139,20 @@ func resolveSource(hdr http.Header) string {
 			return ip
 		}
 	}
+
 	return fallbackSource
 }
 
 // newRequestID generates a 32-character hex request id (16 random bytes, L09),
 // matching the format used by the HTTP request_id middleware.
 func newRequestID() string {
-	b := make([]byte, 16)
+	b := make([]byte, requestIDBytes)
 	if _, err := rand.Read(b); err != nil {
 		// crypto/rand failure is effectively unrecoverable; fall back to a
 		// time-based id so logging never breaks the request path.
 		return hex.EncodeToString([]byte(fmt.Sprintf("%d", time.Now().UnixNano())))
 	}
+
 	return hex.EncodeToString(b)
 }
 
@@ -153,6 +163,7 @@ func inboundToken(req *mcp.CallToolRequest) string {
 	if req == nil || req.Extra == nil || req.Extra.Header == nil {
 		return ""
 	}
+
 	return req.Extra.Header.Get("X-Auth-Token")
 }
 
@@ -170,5 +181,6 @@ func parseArgs(req *mcp.CallToolRequest) (map[string]any, error) {
 	if err := json.Unmarshal(raw, &args); err != nil {
 		return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "invalid arguments: " + err.Error()}
 	}
+
 	return args, nil
 }

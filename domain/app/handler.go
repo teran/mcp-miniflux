@@ -39,7 +39,14 @@ type Handler interface {
 // with already-redacted args (L05). The composition root wires it to
 // infrastructure/logging (LogToolCall + WithContext for request_id
 // correlation).
-type ToolLogger func(ctx context.Context, tool string, redactedArgs map[string]any, source string, duration time.Duration, outcome string)
+type ToolLogger func(
+	ctx context.Context,
+	tool string,
+	redactedArgs map[string]any,
+	source string,
+	duration time.Duration,
+	outcome string,
+)
 
 // Tool pairs a tool definition (schemas, annotations, instructions) with its
 // application-layer use-case handler.

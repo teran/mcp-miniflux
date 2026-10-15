@@ -20,8 +20,20 @@ type Handler interface {
 	Instructions() string
 }
 
-// ptrBool returns a pointer to b.
-func ptrBool(b bool) *bool { return &b }
+// Entry-limit bounds exposed in the entry-related tool schemas
+// (mnd-friendly named constants).
+const (
+	entryLimitDefault = 100
+	entryLimitMax     = 1000
+)
+
+// ptrBool returns a pointer to a copy of b. The intermediate copy keeps the
+// helper out of the "new(expr)" inlining pattern while preserving semantics.
+func ptrBool(b bool) *bool {
+	p := b
+
+	return &p
+}
 
 // objectSchema builds a strict JSON object input schema with
 // additionalProperties:false (S08).
@@ -36,6 +48,7 @@ func objectSchema(properties map[string]any, required []string) *map[string]any 
 	if len(required) > 0 {
 		s["required"] = required
 	}
+
 	return &s
 }
 
@@ -55,6 +68,7 @@ func stringEnumProp(values ...string) map[string]any {
 	for _, v := range values {
 		enum = append(enum, v)
 	}
+
 	return map[string]any{"type": "string", "enum": enum}
 }
 

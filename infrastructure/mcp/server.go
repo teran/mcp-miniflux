@@ -26,6 +26,10 @@ func NewServer(impl *mcp.Implementation, logger *slog.Logger, instructions strin
 	})
 }
 
+// requestIDBytes is the number of random bytes in a generated request id (16
+// bytes = 32 hex chars, L09).
+const requestIDBytes = 16
+
 // NewStreamableHandler builds the Streamable HTTP handler for a stateless
 // Remote server (M02/M06) and wraps it with the request_id middleware (L09):
 // a request_id is taken from the inbound X-Request-ID header when present, else
@@ -41,18 +45,20 @@ func NewStreamableHandler(s *mcp.Server, logger *slog.Logger) http.Handler {
 			Logger:       logger,
 		},
 	)
+
 	return withRequestID(streamable)
 }
 
 // withRequestIDCtx returns a ctx derived from r's ctx carrying the request_id:
 // the inbound X-Request-ID header when present, else a freshly generated id
 // (L09/L04GO).
-func withRequestIDCtx(r *http.Request) context.Context {
+func withRequestIDCtx(ctx context.Context, r *http.Request) context.Context {
 	id := r.Header.Get("X-Request-ID")
 	if id == "" {
 		id = newRequestID()
 	}
-	return requestid.WithRequestID(r.Context(), id)
+
+	return requestid.WithRequestID(ctx, id)
 }
 
 // withRequestID is the request_id middleware (L09/L04GO): it threads the
@@ -61,7 +67,7 @@ func withRequestIDCtx(r *http.Request) context.Context {
 // isolation.
 func withRequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		next.ServeHTTP(w, r.WithContext(withRequestIDCtx(r)))
+		next.ServeHTTP(w, r.WithContext(withRequestIDCtx(r.Context(), r)))
 	})
 }
 
@@ -75,9 +81,10 @@ func RunStdio(ctx context.Context, s *mcp.Server) error {
 // impossible) entropy failure it falls back to a fixed id so the request still
 // carries a non-empty correlation id.
 func newRequestID() string {
-	b := make([]byte, 16)
+	b := make([]byte, requestIDBytes)
 	if _, err := rand.Read(b); err == nil {
 		return hex.EncodeToString(b)
 	}
+
 	return "request"
 }

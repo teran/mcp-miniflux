@@ -281,7 +281,7 @@ func TestWithContextSetsRequestID(t *testing.T) {
 	l, hook := newHookedLogger()
 	ctx := WithRequestID(context.Background(), "req-42")
 
-	WithContext(l, ctx).Info("hello")
+	WithContext(ctx, l).Info("hello")
 
 	e := hook.LastEntry()
 	if e == nil {
@@ -297,7 +297,7 @@ func TestWithContextSetsRequestID(t *testing.T) {
 func TestWithContextNoRequestID(t *testing.T) {
 	l, hook := newHookedLogger()
 
-	WithContext(l, context.Background()).Info("hello")
+	WithContext(context.Background(), l).Info("hello")
 
 	e := hook.LastEntry()
 	if e == nil {
@@ -371,7 +371,7 @@ func TestSlogHandlerDebugAllowedAtDebug(t *testing.T) {
 func TestLogToolCall(t *testing.T) {
 	l, hook := newHookedLogger()
 	ctx := WithRequestID(context.Background(), "req-99")
-	entry := WithContext(l, ctx)
+	entry := WithContext(ctx, l)
 
 	args := map[string]any{"feed_id": 7, "password": "REDACTED"}
 	dur := 15 * time.Millisecond
@@ -409,7 +409,7 @@ func TestLogToolCall(t *testing.T) {
 func TestLogToolCallErrorOutcome(t *testing.T) {
 	l, hook := newHookedLogger()
 
-	LogToolCall(WithContext(l, context.Background()), "list_feeds", nil, "127.0.0.1", time.Millisecond, "error")
+	LogToolCall(WithContext(context.Background(), l), "list_feeds", nil, "127.0.0.1", time.Millisecond, "error")
 
 	e := hook.LastEntry()
 	if e == nil {
