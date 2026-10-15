@@ -40,14 +40,16 @@ func (c *Config) SetDefaults() {
 
 // SecretFields returns the names of all fields annotated `secret:"true"`, in
 // struct field order. It drives the S02 redaction helper.
-func (c Config) SecretFields() []string {
-	typ := reflect.TypeOf(c)
+func (c *Config) SecretFields() []string {
+	typ := reflect.TypeOf(*c)
 	var out []string
-	for i := 0; i < typ.NumField(); i++ {
+	n := typ.NumField()
+	for i := range n {
 		f := typ.Field(i)
 		if f.Tag.Get("secret") == "true" {
 			out = append(out, f.Name)
 		}
 	}
+
 	return out
 }

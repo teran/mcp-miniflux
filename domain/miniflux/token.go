@@ -23,5 +23,6 @@ func TokenFromContext(ctx context.Context) string {
 		return ""
 	}
 	v, _ := ctx.Value(tokenCtxKey{}).(string)
+
 	return v
 }

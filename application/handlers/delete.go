@@ -15,6 +15,7 @@ type DeleteFeedHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the delete_feed use case.
 func (h DeleteFeedHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	if err := requireConfirm(args); err != nil {
 		return nil, err
@@ -26,6 +27,7 @@ func (h DeleteFeedHandler) Call(ctx context.Context, args map[string]any) (*mcp.
 	if err := h.Client.DeleteFeed(ctx, id); err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return okResult(), nil
 }
 
@@ -35,6 +37,7 @@ type DeleteCategoryHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the delete_category use case.
 func (h DeleteCategoryHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	if err := requireConfirm(args); err != nil {
 		return nil, err
@@ -46,6 +49,7 @@ func (h DeleteCategoryHandler) Call(ctx context.Context, args map[string]any) (*
 	if err := h.Client.DeleteCategory(ctx, id); err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return okResult(), nil
 }
 
@@ -55,6 +59,7 @@ type FlushHistoryHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the flush_history use case.
 func (h FlushHistoryHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	if err := requireConfirm(args); err != nil {
 		return nil, err
@@ -66,5 +71,6 @@ func (h FlushHistoryHandler) Call(ctx context.Context, args map[string]any) (*mc
 	if err := h.Client.FlushHistory(ctx, before); err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return okResult(), nil
 }

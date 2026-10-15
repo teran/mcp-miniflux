@@ -9,6 +9,7 @@ package observability
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/pprof"
 	"time"
@@ -21,6 +22,10 @@ import (
 // DefaultAddr is the default observability listen address (INTERNAL_ADDR,
 // O01/O04). It is distinct from the MCP app default of :8080.
 const DefaultAddr = ":8081"
+
+// shutdownTimeout bounds the graceful-shutdown drain of the observability
+// server (mnd-friendly named constant).
+const shutdownTimeout = 5 * time.Second
 
 // NewObservabilityMux builds the HTTP mux served on the observability port
 // (O01):
@@ -48,6 +53,7 @@ func NewObservabilityMux() *http.ServeMux {
 	mux.HandleFunc("/healthz", okHandler)  // liveness
 	mux.HandleFunc("/readyz", okHandler)   // readiness
 	mux.HandleFunc("/startupz", okHandler) // startup
+
 	return mux
 }
 
@@ -79,10 +85,12 @@ func newInstrumentedServer(addr string, log *logrus.Logger) *http.Server {
 	}, []string{"code", "method"})
 
 	register := func(c prometheus.Collector) {
-		if err := prometheus.DefaultRegisterer.Register(c); err != nil {
-			if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-				log.Errorf("register observability metrics: %v", err)
-			}
+		err := prometheus.DefaultRegisterer.Register(c)
+		if err == nil {
+			return
+		}
+		if _, ok := errors.AsType[prometheus.AlreadyRegisteredError](err); !ok {
+			log.Errorf("register observability metrics: %v", err)
 		}
 	}
 	register(requestDuration)
@@ -103,7 +111,7 @@ func newInstrumentedServer(addr string, log *logrus.Logger) *http.Server {
 	return &http.Server{
 		Addr:              addr,
 		Handler:           instrumented,
-		ReadHeaderTimeout: 5 * time.Second,
+		ReadHeaderTimeout: shutdownTimeout,
 	}
 }
 
@@ -122,6 +130,7 @@ func StartObservabilityServer(addr string, log *logrus.Logger) *http.Server {
 			log.Errorf("observability server on %s: %v", addr, err)
 		}
 	}()
+
 	return srv
 }
 
@@ -137,6 +146,7 @@ func RunObservabilityServer(ctx context.Context, addr string, log *logrus.Logger
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Errorf("observability server on %s: %v", addr, err)
 			serveErr <- err
+
 			return
 		}
 		serveErr <- nil
@@ -144,13 +154,15 @@ func RunObservabilityServer(ctx context.Context, addr string, log *logrus.Logger
 
 	select {
 	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			return err
 		}
+
 		return nil
 	case err := <-serveErr:
+
 		return err
 	}
 }

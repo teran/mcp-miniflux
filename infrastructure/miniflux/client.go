@@ -81,18 +81,24 @@ type clientConfig struct {
 // an injected *http.Client (X03/N26). resty inherits this from the http.Client.
 const defaultTimeout = 30 * time.Second
 
+// maxErrorMessageLen bounds the length of an upstream error message captured
+// by sanitizeMessage so a hostile/large response body cannot bloat logs.
+const maxErrorMessageLen = 512
+
 // Option configures the Client via New.
 type Option func(*clientConfig) error
 
 // WithHTTPClient injects the underlying *http.Client (used to inject a custom
 // transport in tests). An injected client carries its own Timeout, which takes
 // precedence over the default and over WithTimeout (X03/N26).
-func WithHTTPClient(hc *http.Client) Option {
+func WithHTTPClient(httpClient *http.Client) Option {
 	return func(c *clientConfig) error {
-		if hc == nil {
+		if httpClient == nil {
 			return errors.New("miniflux: WithHTTPClient requires a non-nil *http.Client")
 		}
-		c.httpClient = hc
+
+		c.httpClient = httpClient
+
 		return nil
 	}
 }
@@ -107,6 +113,7 @@ func WithTimeout(d time.Duration) Option {
 			return errors.New("miniflux: WithTimeout requires a positive duration")
 		}
 		c.timeout = d
+
 		return nil
 	}
 }
@@ -116,6 +123,7 @@ func WithTimeout(d time.Duration) Option {
 func WithDefaultToken(token string) Option {
 	return func(c *clientConfig) error {
 		c.defaultToken = token
+
 		return nil
 	}
 }
@@ -124,6 +132,7 @@ func WithDefaultToken(token string) Option {
 func WithMetrics(r MetricsRecorder) Option {
 	return func(c *clientConfig) error {
 		c.metrics = r
+
 		return nil
 	}
 }
@@ -135,6 +144,7 @@ func WithMetrics(r MetricsRecorder) Option {
 func WithLogger(l *logrus.Logger) Option {
 	return func(c *clientConfig) error {
 		c.logger = l
+
 		return nil
 	}
 }
@@ -156,6 +166,7 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 	}
 
 	rc := resty.NewWithClient(cfg.httpClient).SetBaseURL(baseURL)
+
 	return &Client{cfg: cfg, client: rc}, nil
 }
 
@@ -171,6 +182,7 @@ func (c *Client) ResolveToken(inbound string) string {
 	if inbound != "" {
 		return inbound
 	}
+
 	return c.cfg.defaultToken
 }
 
@@ -195,9 +207,10 @@ func (c *Client) newRequest(ctx context.Context) *resty.Request {
 	r := c.client.R().
 		SetContext(ctx).
 		SetHeader("X-Auth-Token", c.ResolveToken(TokenFromContext(ctx)))
-	if id := requestid.RequestIDFromContext(ctx); id != "" {
+	if id := requestid.FromContext(ctx); id != "" {
 		r.SetHeader("X-Request-ID", id)
 	}
+
 	return r
 }
 
@@ -220,6 +233,7 @@ func (c *Client) execute(ctx context.Context, r *resty.Request, method, url stri
 
 	if err != nil {
 		c.observe(0, dur, 0, 0)
+
 		return resp, &APIError{Kind: ErrorTransient, Status: 0, Message: err.Error()}
 	}
 
@@ -237,6 +251,7 @@ func (c *Client) execute(ctx context.Context, r *resty.Request, method, url stri
 	if result != nil {
 		_ = json.Unmarshal(resp.Bytes(), result)
 	}
+
 	return resp, nil
 }
 
@@ -254,7 +269,7 @@ func (c *Client) logOutbound(ctx context.Context, method, path string, status in
 	if c.cfg.logger == nil {
 		return
 	}
-	c.cfg.logger.WithField("request_id", requestid.RequestIDFromContext(ctx)).WithFields(logrus.Fields{
+	c.cfg.logger.WithField("request_id", requestid.FromContext(ctx)).WithFields(logrus.Fields{
 		"method":   method,
 		"path":     path,
 		"status":   status,
@@ -273,10 +288,13 @@ func classifyStatus(resp *resty.Response) error {
 	msg := sanitizeMessage(resp.String())
 	switch status {
 	case http.StatusNotFound:
+
 		return &APIError{Kind: ErrorNotFound, Status: status, Message: msg}
 	case http.StatusUnauthorized, http.StatusForbidden:
+
 		return &APIError{Kind: ErrorAuth, Status: status, Message: msg}
 	default: // 429, 5xx and any other non-2xx
+
 		return &APIError{Kind: ErrorTransient, Status: status, Message: msg}
 	}
 }
@@ -284,13 +302,15 @@ func classifyStatus(resp *resty.Response) error {
 // sanitizeMessage bounds the length of an upstream error message and strips
 // control characters so it is safe for logging.
 func sanitizeMessage(s string) string {
-	if len(s) > 512 {
-		s = s[:512]
+	if len(s) > maxErrorMessageLen {
+		s = s[:maxErrorMessageLen]
 	}
+
 	return strings.Map(func(r rune) rune {
 		if r < 0x20 && r != '\n' && r != '\t' {
 			return -1
 		}
+
 		return r
 	}, s)
 }
@@ -319,6 +339,7 @@ func (c *Client) ListFeeds(ctx context.Context, categoryID *int, limit, offset i
 	if _, err := c.execute(ctx, r, http.MethodGet, path, &feeds); err != nil {
 		return nil, err
 	}
+
 	return feeds, nil
 }
 
@@ -330,6 +351,7 @@ func (c *Client) GetFeed(ctx context.Context, id int) (*dmf.Feed, error) {
 	if _, err := c.execute(ctx, r, http.MethodGet, "/v1/feeds/{feedID}", &feed); err != nil {
 		return nil, err
 	}
+
 	return &feed, nil
 }
 
@@ -341,6 +363,7 @@ func (c *Client) ListCategories(ctx context.Context) ([]dmf.Category, error) {
 	if _, err := c.execute(ctx, r, http.MethodGet, "/v1/categories", &cats); err != nil {
 		return nil, err
 	}
+
 	return cats, nil
 }
 
@@ -376,6 +399,7 @@ func applyEntryFilter(r *resty.Request, filter dmf.EntryFilter) *resty.Request {
 	if filter.After != nil {
 		r.SetQueryParam("after", filter.After.Format(time.RFC3339))
 	}
+
 	return r
 }
 
@@ -387,6 +411,7 @@ func (c *Client) ListEntries(ctx context.Context, filter dmf.EntryFilter) (dmf.F
 	if _, err := c.execute(ctx, r, http.MethodGet, "/v1/entries", &out); err != nil {
 		return dmf.FeedEntries{}, err
 	}
+
 	return out, nil
 }
 
@@ -398,6 +423,7 @@ func (c *Client) GetEntry(ctx context.Context, id int) (*dmf.Entry, error) {
 	if _, err := c.execute(ctx, r, http.MethodGet, "/v1/entries/{entryID}", &entry); err != nil {
 		return nil, err
 	}
+
 	return &entry, nil
 }
 
@@ -410,6 +436,7 @@ func (c *Client) GetFeedEntries(ctx context.Context, feedID int, filter dmf.Entr
 	if _, err := c.execute(ctx, r, http.MethodGet, "/v1/feeds/{feedID}/entries", &out); err != nil {
 		return dmf.FeedEntries{}, err
 	}
+
 	return out, nil
 }
 
@@ -421,6 +448,7 @@ func (c *Client) GetCounters(ctx context.Context) (*dmf.Counters, error) {
 	if _, err := c.execute(ctx, r, http.MethodGet, "/v1/feeds/counters", &out); err != nil {
 		return nil, err
 	}
+
 	return &out, nil
 }
 
@@ -432,6 +460,7 @@ func (c *Client) GetMe(ctx context.Context) (*dmf.Me, error) {
 	if _, err := c.execute(ctx, r, http.MethodGet, "/v1/me", &out); err != nil {
 		return nil, err
 	}
+
 	return &out, nil
 }
 
@@ -443,6 +472,7 @@ func (c *Client) ExportOPML(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return resp.String(), nil
 }
 
@@ -451,16 +481,17 @@ func (c *Client) ExportOPML(ctx context.Context) (string, error) {
 // http or https scheme. Anything else is rejected before any upstream call so
 // SSRF exposure stays bounded to the trusted Miniflux instance (SPEC §7/S11).
 func validateDiscoverURL(raw string) error {
-	u, err := url.Parse(raw)
+	parsedURL, err := url.Parse(raw)
 	if err != nil {
 		return fmt.Errorf("miniflux: discover: invalid URL: %w", err)
 	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("miniflux: discover: URL must use http or https scheme, got %q", u.Scheme)
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return fmt.Errorf("miniflux: discover: URL must use http or https scheme, got %q", parsedURL.Scheme)
 	}
-	if u.Host == "" {
+	if parsedURL.Host == "" {
 		return fmt.Errorf("miniflux: discover: URL must be absolute with a host")
 	}
+
 	return nil
 }
 
@@ -475,6 +506,7 @@ func (c *Client) Discover(ctx context.Context, url string) ([]dmf.DiscoveryResul
 	if _, err := c.execute(ctx, r, http.MethodPost, "/v1/discover", &out); err != nil {
 		return nil, err
 	}
+
 	return out, nil
 }
 
@@ -492,6 +524,7 @@ func (c *Client) CreateFeed(ctx context.Context, req dmf.CreateFeedRequest) (*dm
 	if _, err := c.execute(ctx, r, http.MethodPost, "/v1/feeds", &created); err != nil {
 		return nil, err
 	}
+
 	return c.GetFeed(ctx, created.FeedID)
 }
 
@@ -505,6 +538,7 @@ func (c *Client) UpdateFeed(ctx context.Context, id int, req dmf.UpdateFeedReque
 	if _, err := c.execute(ctx, r, http.MethodPut, "/v1/feeds/{feedID}", &feed); err != nil {
 		return nil, err
 	}
+
 	return &feed, nil
 }
 
@@ -512,6 +546,7 @@ func (c *Client) UpdateFeed(ctx context.Context, id int, req dmf.UpdateFeedReque
 func (c *Client) RefreshFeed(ctx context.Context, id int) error {
 	r := c.newRequest(ctx).SetPathParam("feedID", strconv.Itoa(id))
 	_, err := c.execute(ctx, r, http.MethodPut, "/v1/feeds/{feedID}/refresh", nil)
+
 	return err
 }
 
@@ -523,6 +558,7 @@ func (c *Client) CreateCategory(ctx context.Context, title string) (*dmf.Categor
 	if _, err := c.execute(ctx, r, http.MethodPost, "/v1/categories", &cat); err != nil {
 		return nil, err
 	}
+
 	return &cat, nil
 }
 
@@ -532,6 +568,7 @@ func (c *Client) UpdateCategory(ctx context.Context, id int, title string) error
 		SetPathParam("categoryID", strconv.Itoa(id)).
 		SetBody(map[string]string{"title": title})
 	_, err := c.execute(ctx, r, http.MethodPut, "/v1/categories/{categoryID}", nil)
+
 	return err
 }
 
@@ -539,6 +576,7 @@ func (c *Client) UpdateCategory(ctx context.Context, id int, title string) error
 func (c *Client) RefreshCategory(ctx context.Context, id int) error {
 	r := c.newRequest(ctx).SetPathParam("categoryID", strconv.Itoa(id))
 	_, err := c.execute(ctx, r, http.MethodPut, "/v1/categories/{categoryID}/refresh", nil)
+
 	return err
 }
 
@@ -546,6 +584,7 @@ func (c *Client) RefreshCategory(ctx context.Context, id int) error {
 func (c *Client) MarkFeedEntriesRead(ctx context.Context, feedID int) error {
 	r := c.newRequest(ctx).SetPathParam("feedID", strconv.Itoa(feedID))
 	_, err := c.execute(ctx, r, http.MethodPut, "/v1/feeds/{feedID}/mark-all-as-read", nil)
+
 	return err
 }
 
@@ -553,6 +592,7 @@ func (c *Client) MarkFeedEntriesRead(ctx context.Context, feedID int) error {
 func (c *Client) MarkCategoryEntriesRead(ctx context.Context, categoryID int) error {
 	r := c.newRequest(ctx).SetPathParam("categoryID", strconv.Itoa(categoryID))
 	_, err := c.execute(ctx, r, http.MethodPut, "/v1/categories/{categoryID}/mark-all-as-read", nil)
+
 	return err
 }
 
@@ -560,6 +600,7 @@ func (c *Client) MarkCategoryEntriesRead(ctx context.Context, categoryID int) er
 func (c *Client) UpdateEntries(ctx context.Context, req dmf.UpdateEntriesRequest) error {
 	r := c.newRequest(ctx).SetBody(req)
 	_, err := c.execute(ctx, r, http.MethodPut, "/v1/entries", nil)
+
 	return err
 }
 
@@ -567,6 +608,7 @@ func (c *Client) UpdateEntries(ctx context.Context, req dmf.UpdateEntriesRequest
 func (c *Client) ToggleEntryBookmark(ctx context.Context, entryID int) error {
 	r := c.newRequest(ctx).SetPathParam("entryID", strconv.Itoa(entryID))
 	_, err := c.execute(ctx, r, http.MethodPut, "/v1/entries/{entryID}/bookmark", nil)
+
 	return err
 }
 
@@ -580,6 +622,7 @@ func (c *Client) UpdateEntry(ctx context.Context, id int, req dmf.UpdateEntryReq
 	if _, err := c.execute(ctx, r, http.MethodPut, "/v1/entries/{entryID}", &entry); err != nil {
 		return nil, err
 	}
+
 	return &entry, nil
 }
 
@@ -587,6 +630,7 @@ func (c *Client) UpdateEntry(ctx context.Context, id int, req dmf.UpdateEntryReq
 func (c *Client) ImportOPML(ctx context.Context, opml string) error {
 	r := c.newRequest(ctx).SetBody(opml)
 	_, err := c.execute(ctx, r, http.MethodPost, "/v1/import", nil)
+
 	return err
 }
 
@@ -596,6 +640,7 @@ func (c *Client) ImportOPML(ctx context.Context, opml string) error {
 func (c *Client) DeleteFeed(ctx context.Context, id int) error {
 	r := c.newRequest(ctx).SetPathParam("feedID", strconv.Itoa(id))
 	_, err := c.execute(ctx, r, http.MethodDelete, "/v1/feeds/{feedID}", nil)
+
 	return err
 }
 
@@ -603,6 +648,7 @@ func (c *Client) DeleteFeed(ctx context.Context, id int) error {
 func (c *Client) DeleteCategory(ctx context.Context, id int) error {
 	r := c.newRequest(ctx).SetPathParam("categoryID", strconv.Itoa(id))
 	_, err := c.execute(ctx, r, http.MethodDelete, "/v1/categories/{categoryID}", nil)
+
 	return err
 }
 
@@ -613,5 +659,6 @@ func (c *Client) FlushHistory(ctx context.Context, before *time.Time) error {
 		r.SetQueryParam("before", before.Format(time.RFC3339))
 	}
 	_, err := c.execute(ctx, r, http.MethodPut, "/v1/flush-history", nil)
+
 	return err
 }

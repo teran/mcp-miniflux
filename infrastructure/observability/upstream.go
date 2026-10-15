@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"errors"
 	"strconv"
 	"time"
 
@@ -24,7 +25,7 @@ type UpstreamRecorder struct {
 // metric family names are prefixed by namespace and subsystem. Registration is
 // idempotent: repeated construction with the same names does not panic.
 func NewUpstreamMetrics(namespace, subsystem string) *UpstreamRecorder {
-	u := &UpstreamRecorder{
+	recorder := &UpstreamRecorder{
 		requestDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
@@ -53,12 +54,13 @@ func NewUpstreamMetrics(namespace, subsystem string) *UpstreamRecorder {
 		}, []string{"status"}),
 	}
 
-	if err := prometheus.Register(u); err != nil {
-		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+	if err := prometheus.Register(recorder); err != nil {
+		if _, ok := errors.AsType[prometheus.AlreadyRegisteredError](err); !ok {
 			panic(err)
 		}
 	}
-	return u
+
+	return recorder
 }
 
 // ObserveUpstream records one upstream response (O03): latency, request and

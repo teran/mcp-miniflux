@@ -17,12 +17,13 @@ func WithRequestID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, ctxKey{}, id)
 }
 
-// RequestIDFromContext retrieves the request id from ctx, returning "" when
-// absent (L09).
-func RequestIDFromContext(ctx context.Context) string {
+// FromContext retrieves the request id from ctx, returning "" when absent
+// (L09).
+func FromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}
 	v, _ := ctx.Value(ctxKey{}).(string)
+
 	return v
 }

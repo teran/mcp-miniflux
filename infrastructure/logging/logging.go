@@ -45,6 +45,7 @@ func New(opts Options) (*logrus.Logger, error) {
 	switch opts.Mode {
 	case "http", "stdio":
 	default:
+
 		return nil, fmt.Errorf("logging: invalid mode %q", opts.Mode)
 	}
 
@@ -59,6 +60,7 @@ func New(opts Options) (*logrus.Logger, error) {
 	case "json":
 		formatter = &logrus.JSONFormatter{}
 	default:
+
 		return nil, fmt.Errorf("logging: invalid format %q", opts.Format)
 	}
 
@@ -67,6 +69,7 @@ func New(opts Options) (*logrus.Logger, error) {
 
 	if opts.Mode == "http" {
 		l.SetOutput(os.Stdout)
+
 		return l, setLevel(l, opts.Level, defaultLevel)
 	}
 
@@ -85,10 +88,12 @@ func New(opts Options) (*logrus.Logger, error) {
 	if opts.Level == "" {
 		l.SetOutput(io.Discard)
 		l.SetLevel(logrus.PanicLevel)
+
 		return l, nil
 	}
 
 	l.SetOutput(f)
+
 	return l, setLevel(l, opts.Level, "")
 }
 
@@ -104,6 +109,7 @@ func setLevel(l *logrus.Logger, level, fallback string) error {
 		return fmt.Errorf("logging: invalid level %q: %w", level, err)
 	}
 	l.SetLevel(lvl)
+
 	return nil
 }
 
@@ -116,18 +122,19 @@ func WithRequestID(ctx context.Context, id string) context.Context {
 }
 
 // RequestIDFromContext retrieves the request id from ctx, returning "" when
-// absent (L09).
+// absent (L09). It delegates to the canonical helper in domain/requestid.
 func RequestIDFromContext(ctx context.Context) string {
-	return requestid.RequestIDFromContext(ctx)
+	return requestid.FromContext(ctx)
 }
 
 // WithContext returns a logrus.Entry bound to ctx; when ctx carries a
 // request_id, the entry has a "request_id" field set (L09).
-func WithContext(l *logrus.Logger, ctx context.Context) *logrus.Entry {
+func WithContext(ctx context.Context, l *logrus.Logger) *logrus.Entry {
 	entry := logrus.NewEntry(l)
 	if id := RequestIDFromContext(ctx); id != "" {
 		entry = entry.WithField("request_id", id)
 	}
+
 	return entry
 }
 
@@ -155,6 +162,7 @@ func (h *slogHandler) Handle(_ context.Context, r slog.Record) error {
 	fields := logrus.Fields{}
 	r.Attrs(func(a slog.Attr) bool {
 		fields[a.Key] = a.Value.Any()
+
 		return true
 	})
 
@@ -169,25 +177,33 @@ func (h *slogHandler) Handle(_ context.Context, r slog.Record) error {
 	default:
 		entry.Error(r.Message)
 	}
+
 	return nil
 }
 
 // WithAttrs returns a handler that also carries the given attributes. This
 // implementation keeps the same underlying logger; attributes are captured per
 // record.
-func (h *slogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+func (h *slogHandler) WithAttrs(_ []slog.Attr) slog.Handler {
 	return h
 }
 
 // WithGroup returns a handler scoped to a group. This implementation ignores
 // the group and forwards records unchanged.
-func (h *slogHandler) WithGroup(name string) slog.Handler {
+func (h *slogHandler) WithGroup(_ string) slog.Handler {
 	return h
 }
 
 // LogToolCall emits the per-request tool-call access log at info level (L08):
 // structured fields tool, args (already redacted), source, duration, outcome.
-func LogToolCall(entry *logrus.Entry, tool string, redactedArgs map[string]any, source string, duration time.Duration, outcome string) {
+func LogToolCall(
+	entry *logrus.Entry,
+	tool string,
+	redactedArgs map[string]any,
+	source string,
+	duration time.Duration,
+	outcome string,
+) {
 	entry.WithFields(logrus.Fields{
 		"tool":     tool,
 		"args":     redactedArgs,

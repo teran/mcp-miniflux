@@ -23,6 +23,7 @@ func Redact(v any) any {
 	if isNilValue(val) {
 		return nil
 	}
+
 	return val.Interface()
 }
 
@@ -34,9 +35,12 @@ func isNilValue(v reflect.Value) bool {
 	}
 	switch v.Kind() {
 	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+
 		return v.IsNil()
+	default:
+
+		return false
 	}
-	return false
 }
 
 // redactValue returns a new reflect.Value of the same type as v with all
@@ -48,6 +52,7 @@ func redactValue(v reflect.Value) reflect.Value {
 
 	switch v.Kind() {
 	case reflect.Struct:
+
 		return redactStruct(v)
 	case reflect.Pointer:
 		if v.IsNil() {
@@ -55,15 +60,17 @@ func redactValue(v reflect.Value) reflect.Value {
 		}
 		out := reflect.New(v.Type().Elem())
 		out.Elem().Set(redactValue(v.Elem()))
+
 		return out
 	case reflect.Slice:
 		if v.IsNil() {
 			return v
 		}
 		out := reflect.MakeSlice(v.Type(), v.Len(), v.Len())
-		for i := 0; i < v.Len(); i++ {
+		for i := range v.Len() {
 			out.Index(i).Set(redactValue(v.Index(i)))
 		}
+
 		return out
 	case reflect.Map:
 		if v.IsNil() {
@@ -74,13 +81,16 @@ func redactValue(v reflect.Value) reflect.Value {
 		for iter.Next() {
 			out.SetMapIndex(iter.Key(), redactValue(iter.Value()))
 		}
+
 		return out
 	case reflect.Interface:
 		if v.IsNil() {
 			return v
 		}
+
 		return redactValue(v.Elem())
 	default:
+
 		return v
 	}
 }
@@ -90,7 +100,8 @@ func redactValue(v reflect.Value) reflect.Value {
 func redactStruct(v reflect.Value) reflect.Value {
 	out := reflect.New(v.Type()).Elem()
 	t := v.Type()
-	for i := 0; i < v.NumField(); i++ {
+	n := v.NumField()
+	for i := range n {
 		field := t.Field(i)
 		if !field.IsExported() {
 			continue
@@ -101,6 +112,7 @@ func redactStruct(v reflect.Value) reflect.Value {
 			out.Field(i).Set(redactValue(v.Field(i)))
 		}
 	}
+
 	return out
 }
 
@@ -130,6 +142,7 @@ func RedactMap(m map[string]any) map[string]any {
 		}
 		out[k] = redactMapValue(v)
 	}
+
 	return out
 }
 
@@ -138,14 +151,17 @@ func RedactMap(m map[string]any) map[string]any {
 func redactMapValue(v any) any {
 	switch t := v.(type) {
 	case map[string]any:
+
 		return RedactMap(t)
 	case []any:
 		out := make([]any, len(t))
 		for i, item := range t {
 			out[i] = redactMapValue(item)
 		}
+
 		return out
 	default:
+
 		return v
 	}
 }

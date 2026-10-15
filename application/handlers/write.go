@@ -15,6 +15,7 @@ type CreateFeedHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the create_feed use case.
 func (h CreateFeedHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	req := dmf.CreateFeedRequest{}
 	var err error
@@ -57,6 +58,7 @@ func (h CreateFeedHandler) Call(ctx context.Context, args map[string]any) (*mcp.
 	if err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return jsonResult(feed)
 }
 
@@ -65,6 +67,7 @@ type UpdateFeedHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the update_feed use case.
 func (h UpdateFeedHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	id, err := asInt("feed_id", args["feed_id"])
 	if err != nil {
@@ -107,6 +110,7 @@ func (h UpdateFeedHandler) Call(ctx context.Context, args map[string]any) (*mcp.
 	if err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return jsonResult(feed)
 }
 
@@ -115,6 +119,7 @@ type RefreshFeedHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the refresh_feed use case.
 func (h RefreshFeedHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	id, err := asInt("feed_id", args["feed_id"])
 	if err != nil {
@@ -123,6 +128,7 @@ func (h RefreshFeedHandler) Call(ctx context.Context, args map[string]any) (*mcp
 	if err := h.Client.RefreshFeed(ctx, id); err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return okResult(), nil
 }
 
@@ -132,6 +138,7 @@ type CreateCategoryHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the create_category use case.
 func (h CreateCategoryHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	title, err := stringArg("title", args)
 	if err != nil {
@@ -155,6 +162,7 @@ func (h CreateCategoryHandler) Call(ctx context.Context, args map[string]any) (*
 	if err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return jsonResult(cat)
 }
 
@@ -163,6 +171,7 @@ type UpdateCategoryHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the update_category use case.
 func (h UpdateCategoryHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	id, err := asInt("category_id", args["category_id"])
 	if err != nil {
@@ -175,6 +184,7 @@ func (h UpdateCategoryHandler) Call(ctx context.Context, args map[string]any) (*
 	if err := h.Client.UpdateCategory(ctx, id, title); err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return okResult(), nil
 }
 
@@ -183,6 +193,7 @@ type RefreshCategoryHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the refresh_category use case.
 func (h RefreshCategoryHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	id, err := asInt("category_id", args["category_id"])
 	if err != nil {
@@ -191,6 +202,7 @@ func (h RefreshCategoryHandler) Call(ctx context.Context, args map[string]any) (
 	if err := h.Client.RefreshCategory(ctx, id); err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return okResult(), nil
 }
 
@@ -199,6 +211,7 @@ type MarkFeedEntriesReadHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the mark_feed_entries_read use case.
 func (h MarkFeedEntriesReadHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	id, err := asInt("feed_id", args["feed_id"])
 	if err != nil {
@@ -207,6 +220,7 @@ func (h MarkFeedEntriesReadHandler) Call(ctx context.Context, args map[string]an
 	if err := h.Client.MarkFeedEntriesRead(ctx, id); err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return okResult(), nil
 }
 
@@ -216,6 +230,7 @@ type MarkCategoryEntriesReadHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the mark_category_entries_read use case.
 func (h MarkCategoryEntriesReadHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	id, err := asInt("category_id", args["category_id"])
 	if err != nil {
@@ -224,6 +239,7 @@ func (h MarkCategoryEntriesReadHandler) Call(ctx context.Context, args map[strin
 	if err := h.Client.MarkCategoryEntriesRead(ctx, id); err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return okResult(), nil
 }
 
@@ -232,13 +248,14 @@ type UpdateEntriesHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the update_entries use case.
 func (h UpdateEntriesHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	raw, ok := args["entry_ids"].([]any)
 	if !ok || len(raw) == 0 {
 		return nil, invalidParams("entry_ids must be a non-empty array of integers")
 	}
-	if len(raw) > 1000 {
-		return nil, invalidParams("entry_ids must not exceed 1000 entries")
+	if len(raw) > maxEntryLimit {
+		return nil, invalidParams("entry_ids must not exceed %d entries", maxEntryLimit)
 	}
 	ids := make([]int, 0, len(raw))
 	for _, item := range raw {
@@ -261,6 +278,7 @@ func (h UpdateEntriesHandler) Call(ctx context.Context, args map[string]any) (*m
 	if err := h.Client.UpdateEntries(ctx, req); err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return okResult(), nil
 }
 
@@ -270,6 +288,7 @@ type ToggleEntryBookmarkHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the toggle_entry_bookmark use case.
 func (h ToggleEntryBookmarkHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	id, err := asInt("entry_id", args["entry_id"])
 	if err != nil {
@@ -278,6 +297,7 @@ func (h ToggleEntryBookmarkHandler) Call(ctx context.Context, args map[string]an
 	if err := h.Client.ToggleEntryBookmark(ctx, id); err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return okResult(), nil
 }
 
@@ -286,6 +306,7 @@ type UpdateEntryHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the update_entry use case.
 func (h UpdateEntryHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	id, err := asInt("entry_id", args["entry_id"])
 	if err != nil {
@@ -306,6 +327,7 @@ func (h UpdateEntryHandler) Call(ctx context.Context, args map[string]any) (*mcp
 	if err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return jsonResult(entry)
 }
 
@@ -315,6 +337,7 @@ type ImportOPMLHandler struct {
 	Client dmf.Client
 }
 
+// Call implements app.Handler for the import_opml use case.
 func (h ImportOPMLHandler) Call(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
 	doc, err := stringArg("opml", args)
 	if err != nil {
@@ -326,5 +349,6 @@ func (h ImportOPMLHandler) Call(ctx context.Context, args map[string]any) (*mcp.
 	if err := h.Client.ImportOPML(ctx, doc); err != nil {
 		return upstreamErr(err), nil
 	}
+
 	return okResult(), nil
 }

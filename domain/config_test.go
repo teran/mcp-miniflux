@@ -95,7 +95,7 @@ func TestConfigSecretTagIsPresent(t *testing.T) {
 // TestSecretFields enumerates the exact secret-annotated field set. The
 // redaction helper (S02) uses this; any deviation changes what is redacted.
 func TestSecretFields(t *testing.T) {
-	got := Config{}.SecretFields()
+	got := (&Config{}).SecretFields()
 	want := []string{"MinifluxAPIToken"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("SecretFields() = %v, want %v", got, want)

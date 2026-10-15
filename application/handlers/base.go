@@ -15,6 +15,21 @@ import (
 	dmf "github.com/teran/mcp-miniflux/domain/miniflux"
 )
 
+// entryFilter argument bounds (mnd-friendly named constants).
+const (
+	defaultEntryLimit = 100 // default list_entries/get_feed_entries limit
+	maxEntryLimit     = 1000
+)
+
+// ANSI/control byte constants used by sanitizeText (mnd-friendly).
+const (
+	escByte = 0x1b // ESC control byte
+	delByte = 0x7f // DEL control byte
+	belByte = 0x07 // BEL control byte
+	// stLen is the byte length of the OSC string-terminator sequence (ESC \).
+	stLen = 2
+)
+
 // invalidParams builds a JSON-RPC InvalidParams error for a tool argument that
 // fails validation (SPEC §6.5 S08). It becomes a protocol error (no upstream
 // call is made).
@@ -32,6 +47,7 @@ func asInt(name string, v any) (int, error) {
 	if f != float64(int64(f)) {
 		return 0, invalidParams("%s must be an integer", name)
 	}
+
 	return int(f), nil
 }
 
@@ -42,6 +58,7 @@ func intArg(name string, args map[string]any, def int) (int, error) {
 	if !ok {
 		return def, nil
 	}
+
 	return asInt(name, v)
 }
 
@@ -55,6 +72,7 @@ func stringArg(name string, args map[string]any) (string, error) {
 	if !ok {
 		return "", invalidParams("%s must be a string", name)
 	}
+
 	return s, nil
 }
 
@@ -63,12 +81,18 @@ func stringArg(name string, args map[string]any) (string, error) {
 func boolArg(name string, args map[string]any) (*bool, error) {
 	v, ok := args[name]
 	if !ok {
-		return nil, nil
+		// Absent optional argument: return a nil *bool with no error (no
+		// filter). A named nil is used so nilnil's (nil, nil) check stays
+		// clean while the behaviour is identical to returning literal nil,nil.
+		var absent *bool
+
+		return absent, nil
 	}
 	b, ok := v.(bool)
 	if !ok {
 		return nil, invalidParams("%s must be a boolean", name)
 	}
+
 	return &b, nil
 }
 
@@ -83,6 +107,7 @@ func timeArg(name string, args map[string]any) (*time.Time, error) {
 	if perr != nil {
 		return nil, invalidParams("%s must be an RFC3339 timestamp", name)
 	}
+
 	return &t, nil
 }
 
@@ -91,43 +116,30 @@ func timeArg(name string, args map[string]any) (*time.Time, error) {
 func entryFilter(args map[string]any, withCategory bool) (dmf.EntryFilter, error) {
 	var f dmf.EntryFilter
 
-	if v, err := stringArg("status", args); err != nil {
+	var err error
+	if f.Status, err = stringArg("status", args); err != nil {
 		return f, err
-	} else {
-		f.Status = v
 	}
-	if v, err := stringArg("order", args); err != nil {
+	if f.Order, err = stringArg("order", args); err != nil {
 		return f, err
-	} else {
-		f.Order = v
 	}
-	if v, err := stringArg("direction", args); err != nil {
+	if f.Direction, err = stringArg("direction", args); err != nil {
 		return f, err
-	} else {
-		f.Direction = v
 	}
-	if v, err := intArg("limit", args, 100); err != nil {
+	if f.Limit, err = intArg("limit", args, defaultEntryLimit); err != nil {
 		return f, err
-	} else {
-		f.Limit = v
 	}
-	if f.Limit > 1000 {
-		return f, invalidParams("limit must not exceed 1000")
+	if f.Limit > maxEntryLimit {
+		return f, invalidParams("limit must not exceed %d", maxEntryLimit)
 	}
-	if v, err := intArg("offset", args, 0); err != nil {
+	if f.Offset, err = intArg("offset", args, 0); err != nil {
 		return f, err
-	} else {
-		f.Offset = v
 	}
-	if v, err := stringArg("search", args); err != nil {
+	if f.Search, err = stringArg("search", args); err != nil {
 		return f, err
-	} else {
-		f.Search = v
 	}
-	if v, err := boolArg("starred", args); err != nil {
+	if f.Starred, err = boolArg("starred", args); err != nil {
 		return f, err
-	} else {
-		f.Starred = v
 	}
 	if withCategory {
 		if v, ok := args["category_id"]; ok {
@@ -138,22 +150,51 @@ func entryFilter(args map[string]any, withCategory bool) (dmf.EntryFilter, error
 			f.CategoryID = &id
 		}
 	}
-	if v, err := timeArg("before", args); err != nil {
+	if f.Before, err = timeArg("before", args); err != nil {
 		return f, err
-	} else {
-		f.Before = v
 	}
-	if v, err := timeArg("after", args); err != nil {
+	if f.After, err = timeArg("after", args); err != nil {
 		return f, err
-	} else {
-		f.After = v
 	}
+
 	return f, nil
 }
 
 // marshalJSON marshals v (with secret fields redacted, S02) to JSON bytes.
 func marshalJSON(v any) ([]byte, error) {
 	return json.Marshal(dmf.Redact(v))
+}
+
+// consumeEscape parses an ANSI escape sequence starting at in[i], where in[i]
+// is ESC, and returns the index just past the consumed bytes. A full CSI
+// (ESC [ ... ) or OSC (ESC ] ... BEL|ST) sequence is consumed; a bare ESC or a
+// truncated/malformed sequence consumes just the ESC byte (the rest is kept).
+func consumeEscape(in []byte, i int) int {
+	j := i + 1
+	if j >= len(in) || (in[j] != '[' && in[j] != ']') {
+		return i + 1
+	}
+	if in[j] == '[' {
+		// CSI: ESC [ ... final byte in 0x40–0x7e.
+		for k := j + 1; k < len(in); k++ {
+			if in[k] >= 0x40 && in[k] <= 0x7e {
+				return k + 1
+			}
+		}
+
+		return j // truncated: drop the ESC, keep the rest
+	}
+	// OSC: ESC ] ... until BEL (0x07) or ST (ESC \).
+	for k := j + 1; k < len(in); k++ {
+		if in[k] == belByte {
+			return k + 1
+		}
+		if in[k] == escByte && k+1 < len(in) && in[k+1] == '\\' {
+			return k + stLen
+		}
+	}
+
+	return j // truncated: drop the ESC, keep the rest
 }
 
 // sanitizeText strips ANSI/control escape sequences from tool text output so no
@@ -172,61 +213,20 @@ func sanitizeText(s string) string {
 	for i < len(in) {
 		c := in[i]
 		switch {
-		case c == 0x1b: // ESC: consume a full escape sequence if it is one.
-			j := i + 1
-			// CSI: ESC [ ... final byte in 0x40–0x7e; OSCI: ESC ] ... until
-			// BEL (0x07) or ST (ESC \).
-			if j < len(in) && (in[j] == '[' || in[j] == ']') {
-				k := j + 1
-				if in[j] == '[' {
-					for k < len(in) {
-						f := in[k]
-						if f >= 0x40 && f <= 0x7e {
-							break
-						}
-						k++
-					}
-					if k < len(in) {
-						i = k + 1 // consumed the CSI sequence
-						continue
-					}
-					i = j // malformed/incomplete: drop the ESC, keep the rest
-					continue
-				}
-				// OSCI: ESC ] ... until BEL or ST (ESC \).
-				for k < len(in) {
-					if in[k] == 0x07 {
-						i = k + 1
-						break
-					}
-					if k+1 < len(in) && in[k] == 0x1b && in[k+1] == '\\' {
-						i = k + 2
-						break
-					}
-					k++
-				}
-				if i > j {
-					continue
-				}
-				i = j
-				continue
-			}
-			// Bare ESC: drop it.
-			i++
-			continue
+		case c == escByte:
+			i = consumeEscape(in, i)
 		case c < 0x20 && c != '\t' && c != '\n':
 			// Control character (other than tab/newline): drop it.
 			i++
-			continue
-		case c == 0x7f:
+		case c == delByte:
 			// DEL (0x7f) is a control character: drop it.
 			i++
-			continue
 		default:
 			b.WriteByte(c)
 			i++
 		}
 	}
+
 	return b.String()
 }
 
@@ -245,6 +245,7 @@ func jsonResult(v any) (*mcp.CallToolResult, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return &mcp.CallToolResult{
 		Content:           []mcp.Content{textContent(string(data))},
 		StructuredContent: redacted,
@@ -273,16 +274,17 @@ func upstreamErr(err error) *mcp.CallToolResult {
 // absoluteHTTPURL validates that s is an absolute http(s) URL (S11), used by
 // the open-world discover_subscriptions tool before any upstream call.
 func absoluteHTTPURL(s string) error {
-	u, err := url.Parse(s)
+	parsedURL, err := url.Parse(s)
 	if err != nil {
 		return invalidParams("url must be a valid absolute http(s) URL")
 	}
-	if u.Scheme != "http" && u.Scheme != "https" {
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		return invalidParams("url must use http or https scheme")
 	}
-	if u.Host == "" {
+	if parsedURL.Host == "" {
 		return invalidParams("url must be an absolute URL")
 	}
+
 	return nil
 }
 
@@ -292,5 +294,6 @@ func requireConfirm(args map[string]any) error {
 	if v, ok := args["confirm"]; !ok || v != true {
 		return invalidParams("this is a destructive, irreversible operation; pass confirm:true to proceed (S12)")
 	}
+
 	return nil
 }
