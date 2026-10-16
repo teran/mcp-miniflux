@@ -107,6 +107,13 @@ gates.
 - **Pass-through design:** inbound `X-Auth-Token` is forwarded to Miniflux as
   `X-Auth-Token`. Token resolution order: (1) inbound `X-Auth-Token` header, (2)
   `MINIFLUX_API_TOKEN` env. The resolved token is used verbatim and never logged.
+- **Guidance resources (M08/M09/N37):** the server exposes **read-only markdown
+  guidance** under the namespaced scheme `mcp-miniflux://guidance/*`
+  (`overview`, `tools`, `security`, `operations`) for self-description. These are
+  **guidance only** — never application/Miniflux data, never file I/O, secret-free
+  and ANSI-clean. Add a resource by extending the `guidanceResources` map in
+  `infrastructure/mcp/resources.go` **and** keeping the `ResourcesInstructions()`
+  index in sync.
 - **Docs:** keep `SPEC.md` and `AGENTS.md` in English. The README stays English
   and begins with the AI-Generated Content disclaimer (D03). This disclaimer is
   **README-only** — do not add it to AGENTS.md.

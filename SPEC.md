@@ -490,12 +490,24 @@ typed tool.
 
 ## 5. Protocol surface
 
-The server implements the **tools** capability of MCP via the official Go SDK.
-Capabilities and scope:
+The server implements the **tools** and **resources** capabilities of MCP via
+the official Go SDK. Capabilities and scope:
 
 - **Tools** — implemented (the full set in §4).
-- **Resources** — **not implemented**. Miniflux state is exposed only through
-  tools, not as URI-addressed resources.
+- **Resources** — implemented as **read-only self-describing guidance** (M08/M09,
+  N37). A small set of static markdown resources is exposed under the namespaced
+  scheme `mcp-miniflux://guidance/<name>`: `overview`, `tools`, `security`,
+  `operations`. Each is MIME `text/markdown`, deterministic, **secret-free** and
+  **free of ANSI/control sequences**; the bodies are authored in
+  `infrastructure/mcp/resources.go` and registered on the SDK server at startup
+  (composition root: `ResourcesInstructions()` + `RegisterResources`).
+  `resources/list` returns all four; `resources/read` on a known URI returns its
+  markdown, while an **unknown URI returns not-found**
+  (`ResourceNotFoundError`). The server-level Instructions include a **Resources
+  index** pointing at all four URIs so clients can discover them without calling
+  `resources/list` (M08). **Guidance only** — resources never carry application/
+  Miniflux data and never perform file I/O (N37); Miniflux application state is
+  **still** exposed only through tools, not as URI-addressed data resources.
 - **Prompts** — **not implemented** (no templated prompt workflows; the model
   drives the tools directly).
 - **Sampling** — **not implemented** (the server never requests LLM sampling).
@@ -953,6 +965,8 @@ points to where each is addressed:
 | M05 | §4.5 |
 | M06 | §3 |
 | M07 | §4 (no mega-tool) |
+| M08 | §5 (self-describing: read-only guidance resources + Resources index in Instructions) |
+| M09 | §5 (resources capability: namespaced scheme, not-found on unknown URI, secret/ANSI-safe, no app data through resources) |
 | C01 | §11.2 (`make test` coverage ≥ 95) |
 | C02 | §11.2 (gremlins 80/80 hard gate) |
 | C03 | §7, §11.2 (gitleaks) |
@@ -1005,11 +1019,11 @@ points to where each is addressed:
 | C01GO–C09GO | §11, §6.1 (C09GO N/A — no e2e, §11.5) |
 | L01GO–L04GO | §9 |
 
-No **MUST NOT** is violated. Each `MUST NOT` (N01–N36, N01GO–N07GO) is either
+No **MUST NOT** is violated. Each `MUST NOT` (N01–N37, N01GO–N07GO) is either
 addressed (the requirement that would be violated is satisfied elsewhere) or
 explicitly N/A — traced per code below.
 
-**Common MUST NOT (N01–N36):**
+**Common MUST NOT (N01–N37):**
 
 | Code | Addressed / N/A |
 |------|-----------------|
@@ -1049,6 +1063,7 @@ explicitly N/A — traced per code below.
 | N34 | §7 (supply-chain, Go lower-risk — S13) |
 | N35 | §6.6 (no outbound/upstream request at startup — A02) |
 | N36 | §11.2 (CI performs no repository git mutation — the `badges` job was removed; README quality badges are static snapshots) |
+| N37 | §5 (resources carry guidance only — no application/Miniflux data, no file I/O; content secret-free & ANSI-safe; unknown URI → not-found) |
 
 **Go MUST NOT (N01GO–N07GO):**
 

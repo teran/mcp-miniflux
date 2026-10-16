@@ -56,6 +56,14 @@ intentionally **not** exposed (the server operates with a scoped API key and mus
 not be able to mutate account-level principals or credentials). Only the read-only
 `get_me` is available.
 
+**Self-describing guidance resources:** the server exposes four **read-only
+markdown** resources for self-description under the namespaced scheme
+`mcp-miniflux://guidance/*` — `overview`, `tools`, `security`, and `operations`.
+They are discoverable via `resources/list` and readable via `resources/read`
+(unknown URIs return not-found). These are **guidance only** — they never carry
+Miniflux application data; all real state is exposed exclusively through the
+tools above.
+
 ## Requirements
 
 - **Go 1.27.1+** for development (`go.mod` floor `go 1.27.1`; CI toolchain
