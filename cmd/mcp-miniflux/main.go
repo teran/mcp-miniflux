@@ -41,12 +41,6 @@ var (
 	appTimestamp  = "unknown"
 )
 
-// serverInstructions is the server-level instructions string exposed to
-// connected clients (SPEC §6.3).
-const serverInstructions = "mcp-miniflux exposes the Miniflux RSS reader API as strongly-typed MCP tools. " +
-	"Tools are grouped read → write/update → delete; destructive tools require human confirmation. " +
-	"Authentication is passed through via the inbound X-Auth-Token header."
-
 func main() {
 	os.Exit(runMain())
 }
@@ -137,7 +131,8 @@ func run(ctx context.Context, args []string) error {
 	// transport. The slog→logrus adapter (L07/L03GO) is built here because the
 	// mcp package may not import other infrastructure subpackages (arch-lint).
 	sdkLogger := slog.New(logging.NewSlogHandler(log, slog.LevelInfo))
-	srv := mcpmcp.NewServer(serverImplementation(), sdkLogger, serverInstructions)
+	srv := mcpmcp.NewServer(serverImplementation(), sdkLogger, mcpmcp.ResourcesInstructions())
+	mcpmcp.RegisterResources(srv)
 	application.RegisterTools(srv, deps)
 
 	if mode == "http" {
