@@ -52,7 +52,7 @@ Read the tools, security and operations resources for the details.
 
 const toolsMarkdown = `# mcp-miniflux Tools
 
-Tools are grouped by their effect on Miniflux state:
+The tool surface is grouped by its effect on Miniflux state:
 
 - Read tools: fetch feeds, categories, entries and counters without changing
   anything.
