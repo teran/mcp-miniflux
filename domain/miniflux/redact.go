@@ -3,7 +3,15 @@ package miniflux
 import (
 	"reflect"
 	"strings"
+	"time"
 )
+
+// timeType is the reflect.Type of time.Time. redactValue treats it specially:
+// time.Time is a struct whose fields (wall/ext/loc) are all unexported, so the
+// generic redactStruct rebuild would drop them and zero every timestamp. It is
+// immutable, carries no `secret:"true"` fields, and must pass through untouched
+// so freshness/dates survive redaction.
+var timeType = reflect.TypeFor[time.Time]()
 
 // Redact returns a deep copy of v in which every struct field annotated
 // `secret:"true"` is zeroed (S02/L05). It recurses into nested structs,
@@ -47,6 +55,13 @@ func isNilValue(v reflect.Value) bool {
 // `secret:"true"` fields zeroed. It is the recursive workhorse behind Redact.
 func redactValue(v reflect.Value) reflect.Value {
 	if !v.IsValid() {
+		return v
+	}
+
+	// time.Time passes through untouched (see timeType note above). Check the
+	// type before the kind switch: its Kind is Struct but it must not be
+	// rebuilt field-by-field.
+	if v.Type() == timeType {
 		return v
 	}
 
