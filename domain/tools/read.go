@@ -207,7 +207,9 @@ func (GetFeedEntries) Annotations() mcp.ToolAnnotations {
 
 // Instructions returns the tool's usage instructions.
 func (GetFeedEntries) Instructions() string {
-	return "Lists entries for one feed. Use to read the contents of a specific subscription. Read-only."
+	return "Lists entries for one feed. Use to read the contents of a specific subscription. " +
+		"The nested feed.checked_at reflects the last time Miniflux fetched this feed — use it " +
+		"to judge whether entries may be stale. Read-only."
 }
 
 // GetCounters returns feed-level unread counts.

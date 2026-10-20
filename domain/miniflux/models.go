@@ -28,6 +28,14 @@ type Feed struct {
 	ErrorCount int         `json:"error_count"`
 	Username   string      `json:"username" secret:"true"`
 	Password   string      `json:"password" secret:"true"`
+	// CheckedAt / NextCheckAt carry the feed freshness signal returned by
+	// Miniflux (GET /v1/feeds, /v1/feeds/{id}, PUT /v1/feeds/{id} and the
+	// nested feed of each entry). Plain metadata, NOT secrets (S02). time.Time
+	// (non-pointer) so a null / zero next_check_at normalizes to the zero time
+	// and re-marshals as the RFC3339 zero string "0001-01-01T00:00:00Z",
+	// conforming to the output schema's string/date-time type.
+	CheckedAt   time.Time `json:"checked_at"`
+	NextCheckAt time.Time `json:"next_check_at"`
 }
 
 // Redacted returns a copy of the Feed with every `secret:"true"` field zeroed.
@@ -61,6 +69,9 @@ type Entry struct {
 	PublishedAt time.Time `json:"published_at"`
 	CreatedAt   time.Time `json:"created_at"`
 	Content     string    `json:"content"`
+	// Feed is the feed object nested inside each entry by Miniflux, carrying
+	// the feed's freshness signal (checked_at / next_check_at) plus metadata.
+	Feed Feed `json:"feed"`
 }
 
 // CounterTotals aggregates the account-wide unread/read counters.

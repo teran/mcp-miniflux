@@ -3,6 +3,7 @@ package miniflux
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 // redactInner / redactOuter are local fixtures exercising deep recursion
@@ -217,6 +218,50 @@ func TestRedactTypedNilBecomesUntypedNil(t *testing.T) {
 }
 
 // --- Redact: non-struct passthrough ------------------------------------------
+
+// TestRedactPreservesTimeFields locks the S02 fix: time.Time is a struct with
+// only unexported fields (wall/ext/loc), so the generic struct-redaction path
+// would zero it. redactValue must treat time.Time as opaque and pass it through
+// untouched, preserving Entry.PublishedAt/CreatedAt (pre-existing timestamps)
+// and the new Feed.CheckedAt/NextCheckAt freshness signal.
+func TestRedactPreservesTimeFields(t *testing.T) {
+	ts := time.Date(2026, 10, 1, 12, 30, 45, 0, time.UTC)
+
+	// Entry: pre-existing timestamp fields must survive redaction.
+	e := Entry{ID: 1, PublishedAt: ts, CreatedAt: ts, Feed: Feed{ID: 2, CheckedAt: ts, NextCheckAt: ts, Password: "p"}}
+	out := Redact(e).(Entry)
+	if !out.PublishedAt.Equal(ts) || !out.CreatedAt.Equal(ts) {
+		t.Errorf("Entry timestamps dropped by Redact: published=%v created=%v", out.PublishedAt, out.CreatedAt)
+	}
+	if !out.Feed.CheckedAt.Equal(ts) || !out.Feed.NextCheckAt.Equal(ts) {
+		t.Errorf("Entry.Feed freshness dropped by Redact: %+v", out.Feed)
+	}
+	if out.Feed.Password != "" {
+		t.Errorf("nested Feed secret not zeroed: %q", out.Feed.Password)
+	}
+	if !e.PublishedAt.Equal(ts) {
+		t.Errorf("Redact mutated input timestamp")
+	}
+
+	// Feed (as returned by list_feeds/get_feed): freshness survives, secrets zeroed.
+	f := Feed{ID: 3, CheckedAt: ts, NextCheckAt: ts, Password: "secret"}
+	fo := Redact(f).(Feed)
+	if !fo.CheckedAt.Equal(ts) || !fo.NextCheckAt.Equal(ts) {
+		t.Errorf("Feed freshness dropped by Redact: %+v", fo)
+	}
+	if fo.Password != "" {
+		t.Errorf("Feed secret not zeroed: %q", fo.Password)
+	}
+	if !f.CheckedAt.Equal(ts) {
+		t.Errorf("Redact mutated Feed input")
+	}
+
+	// Pointer-to-Feed recursion must also preserve timestamps.
+	po := Redact(&f).(*Feed)
+	if !po.CheckedAt.Equal(ts) || po.Password != "" {
+		t.Errorf("pointer Feed redaction wrong: %+v", po)
+	}
+}
 
 func TestRedactNonStructPassthrough(t *testing.T) {
 	for _, tc := range []struct {

@@ -69,7 +69,10 @@ func TestOutputSchemaTyped(t *testing.T) {
 		"entry_count": 100,
 	}
 
-	// time.Time values marshal to RFC3339 strings.
+	// time.Time values marshal to RFC3339 strings. Miniflux nests the full feed
+	// object (including its freshness signal) inside every entry, so the
+	// representative entry carries a `feed` object exactly like the handler
+	// emits.
 	entry := map[string]any{
 		"id":           9,
 		"user_id":      2,
@@ -82,6 +85,20 @@ func TestOutputSchemaTyped(t *testing.T) {
 		"published_at": "2024-01-02T03:04:05Z",
 		"created_at":   "2024-01-02T03:04:05Z",
 		"content":      "body",
+		"feed": map[string]any{
+			"id":            3,
+			"user_id":       2,
+			"feed_url":      "https://example.com/feed.xml",
+			"site_url":      "https://example.com",
+			"title":         "Example",
+			"category":      map[string]any{"id": 3, "title": "tech"},
+			"status":        "subscribed",
+			"error_count":   0,
+			"username":      "",
+			"password":      "",
+			"checked_at":    "2024-01-02T03:04:05Z",
+			"next_check_at": "0001-01-01T00:00:00Z",
+		},
 	}
 
 	feedEntries := map[string]any{

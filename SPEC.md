@@ -174,7 +174,10 @@ sequences before returning text to the client.
 **`list_feeds`** — list all feed subscriptions, optionally filtered by category.
 - Inputs: `category_id` (`int`, optional), `limit`/`offset` (`int`, optional).
 - Outputs: `feeds[]` (id, user_id, feed_url, site_url, title, category,
-  status, error_count, …; `password` redacted).
+  status, error_count, `checked_at`, `next_check_at`, …; `password` redacted).
+  `checked_at`/`next_check_at` are the feed freshness signal (RFC 3339);
+  `next_check_at` may be a zero timestamp (`0001-01-01T00:00:00Z`) when no
+  refresh is scheduled.
 - Annotations: `title` "List feeds", `readOnlyHint:true`, `openWorldHint:false`.
 - Instructions: "Returns the user's feed subscriptions. Use to enumerate feeds
   or to look up a feed id before calling `get_feed`/`update_feed`/`delete_feed`.
@@ -205,7 +208,8 @@ sequences before returning text to the client.
   max 1000), `offset` (`int`), `search` (`string`), `starred`
   (`bool`), `category_id` (`int`), `before`/`after` (RFC 3339 timestamps).
 - Outputs: `total`, `entries[]` (id, user_id, feed_id, status, starred, title,
-  url, comments_url, published_at, created_at, content, …).
+  url, comments_url, published_at, created_at, content, …, plus the nested
+  `feed` object carrying `checked_at`/`next_check_at` freshness).
 - Annotations: `title` "List entries", `readOnlyHint:true`, `openWorldHint:false`.
 - Instructions: "Returns entries with the given filters. This is the main
   'what is in my queue' tool. Use `status` to target unread/read/removed,
@@ -225,11 +229,14 @@ sequences before returning text to the client.
 - Inputs: `feed_id` (`int`, required); plus the `status`/`order`/`direction`/
   `limit`/`offset`/`search`/`starred`/`before`/`after` filters from
   `list_entries`.
-- Outputs: `total`, `entries[]`.
+- Outputs: `total`, `entries[]`, each with the nested `feed` object carrying
+  `checked_at`/`next_check_at` freshness.
 - Annotations: `title` "Get feed entries", `readOnlyHint:true`,
   `openWorldHint:false`.
 - Instructions: "Lists entries for one feed. Use to read the contents of a
-  specific subscription. Read-only."
+  specific subscription. The nested `feed.checked_at` reflects the last time
+  Miniflux fetched this feed — use it to judge whether entries may be stale.
+  Read-only."
 - Upstream: `GET /v1/feeds/{feedID}/entries`.
 
 **`get_counters`** — feed-level unread counts.

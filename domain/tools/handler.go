@@ -58,6 +58,12 @@ func integerProp() map[string]any { return map[string]any{"type": "integer"} }
 // stringProp returns a JSON schema for a string property.
 func stringProp() map[string]any { return map[string]any{"type": "string"} }
 
+// datetimeProp returns a JSON schema for an RFC3339 date-time string property,
+// matching how time.Time marshals (M07/S09).
+func datetimeProp() map[string]any {
+	return map[string]any{"type": "string", "format": "date-time"}
+}
+
 // booleanProp returns a JSON schema for a boolean property.
 func booleanProp() map[string]any { return map[string]any{"type": "boolean"} }
 
@@ -100,18 +106,22 @@ func categoryRefProps() map[string]any {
 // feedProps returns the properties of a Feed object (M07/S09). Username and
 // Password are redacted (S02) but still present as empty strings in the emitted
 // JSON (no omitempty), so the schema must declare them as strings.
+// checked_at / next_check_at carry the feed freshness signal and marshal as
+// RFC3339 date-time strings.
 func feedProps() map[string]any {
 	return map[string]any{
-		"id":          integerProp(),
-		"user_id":     integerProp(),
-		"feed_url":    stringProp(),
-		"site_url":    stringProp(),
-		"title":       stringProp(),
-		"category":    *objectSchema(categoryRefProps(), nil),
-		"status":      stringProp(),
-		"error_count": integerProp(),
-		"username":    stringProp(),
-		"password":    stringProp(),
+		"id":            integerProp(),
+		"user_id":       integerProp(),
+		"feed_url":      stringProp(),
+		"site_url":      stringProp(),
+		"title":         stringProp(),
+		"category":      *objectSchema(categoryRefProps(), nil),
+		"status":        stringProp(),
+		"error_count":   integerProp(),
+		"username":      stringProp(),
+		"password":      stringProp(),
+		"checked_at":    datetimeProp(),
+		"next_check_at": datetimeProp(),
 	}
 }
 
@@ -126,7 +136,10 @@ func categoryProps() map[string]any {
 }
 
 // entryProps returns the properties of an Entry object. Time fields are
-// marshalled as RFC3339 strings.
+// marshalled as RFC3339 strings. Miniflux nests the full feed object inside
+// every entry (carrying the feed freshness signal), so the strict schema must
+// declare it (additionalProperties:false) or the emitted `feed` key would be
+// rejected.
 func entryProps() map[string]any {
 	return map[string]any{
 		"id":           integerProp(),
@@ -137,9 +150,10 @@ func entryProps() map[string]any {
 		"title":        stringProp(),
 		"url":          stringProp(),
 		"comments_url": stringProp(),
-		"published_at": stringProp(),
-		"created_at":   stringProp(),
+		"published_at": datetimeProp(),
+		"created_at":   datetimeProp(),
 		"content":      stringProp(),
+		"feed":         *objectSchema(feedProps(), nil),
 	}
 }
 
