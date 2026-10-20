@@ -650,7 +650,7 @@ request). The observability liveness probe therefore reflects process liveness,
 
 ---
 
-## 7. Security (S01–S12)
+## 7. Security (S01–S14)
 
 - **S01/N01 — TLS never in-server.** TLS termination is the **reverse proxy's**
   job; the server listens on plain HTTP on `:8080` (MCP) and `:8081`
@@ -706,6 +706,91 @@ request). The observability liveness probe therefore reflects process liveness,
 - **C03/N28 — gitleaks secret scan** over git history runs in CI (see §11),
   complementing runtime annotation-based redaction (S02).
 
+### 7.1 Domain security audit (S14)
+
+> **Owner:** `security` subagent. **Methodology:** `reference/security-audit.md`
+> (applies the common S01–S13 baseline to the RSS/feed domain and adds
+> domain-specific MUSTs). **Absence → N38.** This block is the domain-specific
+> security audit layered **on top of** S01–S13 above; it is cross-referenced
+> from §8 (Data & state).
+
+#### (a) Trust boundaries & threat model
+
+**Trust zones (inner → outer):**
+
+| Zone | Components | What it is trusted to do |
+|------|-----------|--------------------------|
+| **Z0 — MCP client / model host** | LLM agent, gateway, editor | Supplies tool arguments and an optional inbound `X-Auth-Token`. **NOT trusted** to be the sole security gate: it is the adversarial endpoint for injection and for credential-supply. |
+| **Z1 — reverse proxy / TLS terminator** | nginx/ingress fronting `:8080` | Terminates TLS (S01/N01), enforces **inbound authentication** of MCP callers. This is the deployment-level gate that decides who reaches the server at all. |
+| **Z2 — `mcp-miniflux` server (this process)** | stateless sidecar, `:8080` MCP / `:8081` observability | Trusted to: pass `X-Auth-Token` through verbatim, never log/return secrets (S02/L05), validate args (S08), sanitize output (S09), isolate the open-world tool (S07/S10). Holds **no persistent state** (X01). |
+| **Z3 — Miniflux upstream** | the RSS reader API, single base URL `MINIFLUX_API_URL` | **Trusted** to: own all state, enforce feed/category/entry ownership, authenticate via `X-Auth-Token`, and — for `discover_subscriptions` — to perform the actual outbound fetch of an arbitrary URL. |
+| **Z4 — feed content authors / external feed hosts** | remote feed servers and their HTML/XML content | **Untrusted.** Control feed/entry `title`, `content`, URLs, and (via OPML on import) subscription data. Cross Z4→Z3 and Z4→Z2→(model). |
+
+**Boundaries and what crosses them:**
+
+- **Z1→Z2 (inbound HTTP):** MCP JSON-RPC tool calls + optional `X-Auth-Token` header. A compromised or unauthenticated caller at Z1 crosses into Z2 with the full tool surface.
+- **Z2→Z3 (outbound, 1:1 per tool call, X01/A02):** the resolved `X-Auth-Token` (inbound-else-`MINIFLUX_API_TOKEN`, §3.1) and the tool-specific request body/params. Responses carry feeds, entries, counters, the user profile, OPML, and discovery candidates.
+- **Z2→model (tool output):** redacted feed/entry/OPML data and discovery candidates; must never carry feed credentials or the token.
+- **Z4→Z3→Z2→model:** feed-host-controlled content is fetched by Miniflux and relayed by this server to the model as **untrusted** data.
+
+**Threat model (STRIDE applied to this domain):**
+
+- **Spoofing / impersonation (Z1→Z3):** a caller without its own token is served with the shared `MINIFLUX_API_TOKEN`, i.e. it *becomes* the server's Miniflux principal (§3.1 fallback). A caller that obtains any valid `X-Auth-Token` (e.g. from a leak, or the shared fallback) impersonates that Miniflux user. **Blast radius:** full read/write/delete surface for the impersonated principal (deletes still gated by `confirm`, but `confirm` is an argument the model can itself supply — see V5).
+- **Tampering / credential leakage (Z2):** feed basic-auth `username`/`password` embedded in structs must be redacted; if a raw string path (OPML, `feed_url` userinfo) bypasses struct redaction, credentials leak into output/logs (V3/V7).
+- **Information disclosure (Z2→model):** feed credentials in tool output; OPML export carrying credential-bearing attributes (V3); upstream error bodies echoing credential-bearing URLs (V4/V7).
+- **Repudiation / trust of signals (Z2→Z3):** `checked_at` freshness is Miniflux-controlled, not proof of a completed refresh; `refresh_*` is async and returns before `checked_at` advances (V6).
+- **Denial of service / resource exhaustion (Z2→Z3):** an unbounded `opml` argument forwarded to Miniflux (XML-bomb / size) (V1); unbounded discovery candidate set; large entry `limit` (capped at 1000, S08).
+- **Elevation of privilege (Z1→Z3):** the tool surface deliberately excludes user/API-key management (§4.4, S10) so a compromised caller cannot mutate principals; tenant isolation is delegated to Miniflux per-token ownership, not enforced in-process.
+
+**Realistic attackers:** (1) a **compromised or unauthenticated MCP client** reaching `:8080`; (2) a **malicious feed host** controlling entry/OPML content; (3) a **network attacker** on the path to Miniflux or between reverse proxy and `:8080` (mitigated by TLS at the proxy, S01); (4) an **internal-network actor** able to induce Miniflux to fetch arbitrary internal hosts via `discover_subscriptions` (V4).
+
+#### (b) Data-sensitivity classification → C-I-A requirements
+
+| Data class | Where it lives | Sensitivity | Confidentiality | Integrity | Availability |
+|---|---|---|---|---|---|
+| **Miniflux API token / inbound `X-Auth-Token`** | HTTP header, resolved per call (§3.1); never persisted | **Secret** | Redact from all output/logs (S02/L05); carried only in-memory per request; TLS at reverse proxy in transit | Must be forwarded **verbatim, unmodified** (tampering → impersonation of a different principal) | Not stored → no durability need; unavailability = callers can't authenticate |
+| **Feed basic-auth `username`/`password`** | `Feed.Username/Password`, `CreateFeedRequest`/`UpdateFeedRequest` (`secret:"true"`, models.go:29-30,177-178,187-188) | **Secret** | Struct-level redaction on every tool output (`Redact`/`Feed.Redacted`, redact.go:26, models.go:44); never logged; never persisted (stateless) | Settable **only** by the owning principal (delegated to Miniflux); must not be overwritten by another tenant | n/a (stateless) |
+| **Feed / entry content + discovery candidates** | `Entry`, `DiscoveryResult` returned to model | **Public / untrusted** (external feed hosts) | Low (public web content); but treat as **untrusted** — never interpreted/executed | Preserve verbatim; **structure** the output (S07/S09); strip ANSI/control (S09) | Bound sizes (`limit` ≤ 1000); sanitize before relay |
+| **User profile (`get_me`)** | `Me` | **Restricted** | Scoped to the authenticated principal via token (Miniflux-enforced); no secrets in `Me` | Read-only tool; not mutable | n/a |
+| **OPML documents** (`import_opml` / `export_opml`) | raw `string` passed through to Miniflux; never stored locally | **Restricted / untrusted on import** | May embed feed credential-bearing attributes → must not be logged verbatim; output may carry them → redaction applies (V1/V3/V7) | **Not parsed in-process** (forwarded verbatim; XXE handled by Miniflux's parser, never by us) | **Size-bound** on the `opml` argument to avoid XML-bomb/resource exhaustion reaching Miniflux (V1) |
+
+**Availability stance:** read tools must never be disrupted by destructive operations; the three `destructiveHint:true` tools (`delete_feed`, `delete_category`, `flush_history`) require `confirm:true` (HITL, S12) and the server never auto-cascades deletes. Upstream failures (incl. `429`) are returned to the model and logged, never silently retried (X03/N26), so a slow/rate-limited Miniflux degrades gracefully rather than hanging. **No encryption at rest (X04)** applies — the server is stateless (X01).
+
+#### (c) Domain-specific attack vectors → requirements
+
+**V1 — OPML / XML injection & XXE in `import_opml`/`export_opml`.** *Threat:* a crafted OPML document (from the model or a malicious source) targeting entity-expansion ("billion laughs") or external-entity reads. *Impact:* the server does **not** parse XML (ImportOPML forwards the raw string verbatim to `POST /v1/import`, client.go:629-635), so XXE is **delegated to Miniflux's parser** — the in-process XXE risk is nil. The concrete server-side risks are (a) an **unbounded `opml` argument** forwarded to Miniflux enabling resource exhaustion/XML-bomb (S08 limits), and (b) the OPML body being an un-redacted string that may carry credential-bearing attributes. *Requirement (hardens S08/S02):* (i) enforce a **size cap on the `opml` argument** in `ImportOPMLHandler` (write.go:341-353) before forwarding; (ii) **document that the server never parses XML** and that XML/XXE hardening is Miniflux's responsibility; (iii) treat `opml` as potentially credential-bearing in the redaction/log path (see V7).
+
+**V2 — Untrusted feed content / content injection (entries returned to the model).** *Threat:* feed hosts control entry `title`/`content` relayed by `list_entries`/`get_entry`/`get_feed_entries`; can embed ANSI/control sequences, misleading URLs, or model-misdirecting prose. *Impact:* terminal escape in text output; model misdirection (deep prompt-poisoning is out of scope, S07, but output *structure* matters). *Requirement (S07/S09):* entries are **untrusted-origin data** — always returned **structurally** (`outputSchema` + `StructuredContent`, jsonResult read.go:93/111/133) and **ANSI/control-sanitized** (`sanitizeText`, base.go:204); never parsed or executed in-process; tool Instructions must warn the model that feed content is untrusted external data. **Enforced in code.**
+
+**V3 — Leakage of feed basic-auth `username`/`password` (across tenants / in output).** *Threat:* a `Feed` object returned by `list_feeds`/`get_feed`/`get_feed_entries`/`create_feed`/`update_feed` carrying credentials to the model, or one tenant reading another's credentials. *Impact:* credential disclosure; cross-tenant confusion. *Requirement (S02):* struct-level `secret:"true"` redaction — `Feed.Username/Password` are annotated (models.go:29-30) and stripped by `Redact`/`Feed.Redacted` on every output (redact.go, models.go:44). Cross-tenant isolation is **delegated to Miniflux** (each token is a distinct principal; feed ownership enforced upstream) — the server holds no credentials and no cross-tenant index. **Residual:** `export_opml` returns the raw OPML `string` under the `opml` key (read.go:168-182), **not** struct-redacted — if Miniflux's OPML export includes feed credential attributes, they would reach the model. *Requirement:* verify Miniflux's OPML export omits credentials, or redact credential-bearing attributes from the `opml` string before return. *(Open — see checklist.)*
+
+**V4 — SSRF depth & scope of `discover_subscriptions`.** *Threat:* an arbitrary `http(s)` URL is probed through `POST /v1/discover`; `validateDiscoverURL` (client.go:483-496) and `absoluteHTTPURL` (base.go:276-289) restrict **scheme to http/https and require an absolute host, but do NOT block private/loopback/link-local or cloud-metadata ranges.** *Impact:* the server's own direct SSRF surface is bounded (the sidecar's only outbound is the single Miniflux base URL, S11), but **Miniflux's fetch engine becomes an indirect SSRF relay**: a caller can induce Miniflux to probe internal hosts reachable from *its* network. *Requirement (S11, hardens):* (i) keep the existing scheme+absolute validation (enforced); (ii) **document the residual as deployment-level**: Miniflux must run in a restricted-egress zone (network policy / firewall) since the server cannot control where Miniflux connects; (iii) **recommended defense-in-depth**: extend `validateDiscoverURL` to reject private (`10/8`, `172.16/12`, `192.168/16`), loopback (`127/8`), link-local (`169.254/16`), and `169.254.169.254`-style metadata addresses. **Currently NOT enforced — noted as a gap (HIGH residual, mitigated only by deployment).**
+
+**V5 — Token pass-through risks (`X-Auth-Token` forwarding, `MINIFLUX_API_TOKEN` fallback).** *Threat:* token resolution is inbound-then-fallback (§3.1; client.go:181-187). A request with **no** inbound token is served with the shared `MINIFLUX_API_TOKEN`, collapsing all such callers into one Miniflux principal; the resolved token is forwarded verbatim. *Impact:* any network caller that reaches `:8080` without its own token acts as the server's Miniflux user across the **entire** read/write/delete surface. Note the HITL `confirm` flag (base.go:293-299) is an **argument the model itself supplies** — it is a client-side policy hint, not a server-side human gate. *Requirement:* (i) resolve inbound-then-fallback (enforced); (ii) **never log the token** (L05 — enforced: token is never in outbound/access logs); (iii) **the reverse proxy MUST authenticate inbound callers** so the fallback token is not reachable by arbitrary clients — this is a deployment MUST; (iv) document that tenant isolation and HITL are delegated to Miniflux + client policy, not enforced in-process.
+
+**V6 — Async refresh & `checked_at` trust.** *Threat:* `refresh_feed`/`refresh_category` (write.go:117-133,191-207) return `ok` immediately after `PUT .../refresh`; Miniflux refreshes **asynchronously**, so `checked_at` does not advance synchronously. *Impact:* the model/operator may read `checked_at` as proof of a completed refresh and act on stale entries; not a confidentiality issue, but an **integrity-of-signal** concern. *Requirement (integrity):* document that `refresh_*` is async/best-effort and `checked_at`/`next_check_at` are **informational Miniflux-controlled metadata** (models.go:31-38) that must never be used as a security or freshness decision. No code change required beyond documentation.
+
+**V7 — Access-log / argument redaction gaps (`opml`, `feed_url`, `url`).** *Threat:* the access log redacts `args` via `RedactMap` (registry.go:81; redact.go:148), whose `secretKeySet` covers `password`, `token`, `apikey`, `api_token`, `username` — but **not** `opml`, `feed_url`, or `url`. *Impact:* `import_opml` logs the **entire OPML body** verbatim, and `create_feed`/`discover_subscriptions` log `feed_url`/`url` verbatim — any of which can embed credential material (e.g. OPML feed attributes, or URL **userinfo** `https://user:pass@host/feed.xml`) → **credential leak to stdout in HTTP mode (L05/N02)**. *Requirement (S02/L05, concrete code fix):* (i) strip **URL userinfo** from `feed_url`/`url` before logging; (ii) bound/omit the `opml` body in the access-log `args` (log only its length, or redact credential-bearing attributes); (iii) extend `secretKeySet` (or add URL/OPML-aware handling) so future credential-bearing keys are covered. **Enforced for structs; gap for raw-string args — HIGH, fix required.**
+
+**Other identified:** upstream error bodies are bounded to 512 chars and control-stripped (`sanitizeMessage`, client.go:304-316) — if Miniflux echoes a credential-bearing URL in an error, it is length-capped but not credential-scrubbed (LOW, folded into V7/V4). No local filesystem (S04 N/A), no shell/SQL (S11 N/A beyond URL allowlist), no in-process XML parsing (V1).
+
+#### (d) Auditor checklist (filled)
+
+| # | Checklist item | Status | Where enforced / required |
+|---|---|---|---|
+| 1 | Trust zones & boundaries enumerated & documented | **YES** | §7-S14(a); §3 (proxy/transport), §3.1 (token), §6.6 (stateless) |
+| 2 | Concrete threat model for this domain recorded (not generic) | **YES** | §7-S14(a) (STRIDE on RSS/feed flows) |
+| 3 | Every data class classified with C-I-A | **YES** | §7-S14(b) |
+| 4 | Domain-specific vectors identified beyond generic S01–S13 | **YES** | §7-S14(c) V1–V7 |
+| 5 | Each vector mapped to a concrete requirement (hardened S-code or new) | **YES** | §7-S14(c): V1→S08/S02, V2→S07/S09, V3→S02, V4→S11, V5→S02/L05, V6→integrity, V7→S02/L05 |
+| 6 | Redaction (S02) & no-secrets-in-logs (L05) confirmed for this domain's data | **PARTIAL** | Structs (Feed, requests) redacted ✓; **raw-string gap** — `opml` body and `feed_url`/`url` userinfo not redacted in access-log `args` (V7) — **must fix** |
+| 7 | Destructive/irreversible ops flagged `destructiveHint` with HITL (S12) | **YES** | `delete_feed`, `delete_category`, `flush_history` (§4.3; delete.go) require `confirm:true` |
+| 8 | Mutating tools carry a real data-level idempotency mechanism (X02) | **YES** | search-before-create (`create_feed`, `create_category`), Miniflux 200-on-duplicate (`import_opml`), state-setting tools; `toggle_entry_bookmark` correctly non-idempotent (§8) |
+| 9 | Filesystem access scoped per S04 + domain file classes | **N/A** | No local filesystem; S04 N/A (documented) |
+| 10 | Audit produced by the `security` agent and embedded verbatim | **YES** | this block (§7-S14) |
+
+**Residuals to close (not blocking S14 presence but MUST be addressed):** V3 OPML-export credential redaction; V4 private-range SSRF blocking + Miniflux egress isolation; V7 access-log redaction of `opml`/`feed_url`/`url`.
+
 ---
 
 ## 8. Data & state (X01–X05)
@@ -716,7 +801,10 @@ request). The observability liveness probe therefore reflects process liveness,
   counters, OPML). The server persists **no state** outside a single call and
   has no local storage, database or cache. There is therefore **no
   persistence, no at-rest encryption, no schema migration, and no concurrent
-  file-write concern** (X04/X05 N/A — documented, not skipped).
+  file-write concern** (X04/X05 N/A — documented, not skipped). Feed
+  basic-auth credentials and the OPML/token handling are scoped as secrets
+  under the domain security audit **S14 (§7.1)**, whose mutating-tool safety
+  relies on the data-level idempotency guarantees (**X02**) below.
 - **X02/N25 — Write idempotency.** Every mutating tool has a real data-level
   mechanism before it claims `idempotentHint:true`:
   - `create_feed`, `create_category`: **search-before-create** (natural key —
@@ -986,6 +1074,8 @@ points to where each is addressed:
 | S10 | §7, §4.4 |
 | S11 | §7 |
 | S12 | §4.3, §7 |
+| S13 | §7 |
+| S14 | §7.1 (Domain security audit) |
 | R01 | §2, §11.4 |
 | R02 | §2 |
 | R03 | §11.4 |
@@ -1064,6 +1154,10 @@ explicitly N/A — traced per code below.
 | N35 | §6.6 (no outbound/upstream request at startup — A02) |
 | N36 | §11.2 (CI performs no repository git mutation — the `badges` job was removed; README quality badges are static snapshots) |
 | N37 | §5 (resources carry guidance only — no application/Miniflux data, no file I/O; content secret-free & ANSI-safe; unknown URI → not-found) |
+| N38 | §7.1 (domain-specific security audit (S14) by the `security` agent — trust boundaries/threat model, C-I-A classification, domain vectors V1–V7, filled auditor checklist) |
+| N39 | `CODE_OF_CONDUCT.md` present at repo root (D05) |
+| N40 | `CONTRIBUTING.md` present at repo root (D06) |
+| N41 | `SECURITY.md` present at repo root (D07) |
 
 **Go MUST NOT (N01GO–N07GO):**
 
