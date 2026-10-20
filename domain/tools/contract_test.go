@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -183,6 +184,28 @@ func TestInstructionsNonEmpty(t *testing.T) {
 	for _, h := range allTools() {
 		if got := h.Instructions(); got == "" {
 			t.Errorf("%s: Instructions() must be non-empty", h.Name())
+		}
+	}
+}
+
+// TestAsyncRefreshGuidance pins the async semantics of the refresh tools (M04
+// guidance): the model must be told that the call returns immediately (Miniflux
+// refreshes in the background) and to verify feed.checked_at before trusting the
+// entries — closing the FEEDBACK.md stale-entries gap.
+func TestAsyncRefreshGuidance(t *testing.T) {
+	required := []string{"asynchronous", "immediately", "checked_at"}
+	for _, tc := range []struct {
+		name string
+		inst string
+	}{
+		{"refresh_feed", (RefreshFeed{}).Instructions()},
+		{"refresh_category", (RefreshCategory{}).Instructions()},
+	} {
+		lower := strings.ToLower(tc.inst)
+		for _, want := range required {
+			if !strings.Contains(lower, want) {
+				t.Errorf("%s: instructions must describe the async refresh and point to checked_at (missing %q)", tc.name, want)
+			}
 		}
 	}
 }

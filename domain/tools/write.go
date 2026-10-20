@@ -103,7 +103,10 @@ func (RefreshFeed) Annotations() mcp.ToolAnnotations {
 
 // Instructions returns the tool's usage instructions.
 func (RefreshFeed) Instructions() string {
-	return "Triggers Miniflux to refresh this feed's entries. Repeated refresh is idempotent (Miniflux coalesces refreshes)."
+	return "Triggers an asynchronous background refresh of this feed's entries in Miniflux. " +
+		"The call returns immediately; entries may not reflect the refresh until Miniflux " +
+		"completes it — verify feed.checked_at and re-read if they still look stale. " +
+		"Repeated refresh is idempotent (Miniflux coalesces refreshes)."
 }
 
 // CreateCategory creates a category (idempotent via search-before-create by title).
@@ -189,7 +192,10 @@ func (RefreshCategory) Annotations() mcp.ToolAnnotations {
 
 // Instructions returns the tool's usage instructions.
 func (RefreshCategory) Instructions() string {
-	return "Triggers a refresh of every feed in the category. Idempotent."
+	return "Triggers an asynchronous background refresh of every feed in the category. " +
+		"The call returns immediately; entries may not reflect the refresh until Miniflux " +
+		"completes it — verify feed.checked_at and re-read if they still look stale. " +
+		"Idempotent."
 }
 
 // MarkFeedEntriesRead marks all entries of a feed as read.
