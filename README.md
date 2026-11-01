@@ -66,18 +66,18 @@ tools above.
 
 ## Requirements
 
-- **Go 1.27.1+** for development (`go.mod` floor `go 1.27.1`; CI toolchain
-  `GO_VERSION: "1.27.2"`).
+- **Go 1.27.3+** for development (`go.mod` `go 1.27.3`; CI toolchain
+  `GO_VERSION: "1.27.3"`).
 - A **Miniflux v2.x** instance with an **API key** (Settings → API Keys).
 
 Pinned versions (single source of truth: `reference/versions.md`):
 
 | Component | Version |
 |-----------|---------|
-| Go | **1.27.1** (`go.mod` floor) / **1.27.2** (CI toolchain) |
+| Go | **1.27.3** (`go.mod` and CI toolchain) |
 | MCP Go SDK (`github.com/modelcontextprotocol/go-sdk`) | **v1.8.0** |
 | resty.dev/v3 | **v3.0.0-rc.4** |
-| prometheus/client_golang | **v1.24.1** |
+| prometheus/client_golang | **v1.25.0** |
 | sirupsen/logrus | **v1.10.2** |
 | kelseyhightower/envconfig | **v1.4.0** |
 

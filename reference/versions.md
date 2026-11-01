@@ -14,10 +14,10 @@ exactly for the build and CI to be consistent.
 
 | Component | Version | Reference |
 |-----------|---------|-----------|
-| Go | **1.27.2** (`go 1.27.2` in CI `GO_VERSION: "1.27.2"`; `go.mod` `go 1.27.1` is a floor, toolchain resolves to 1.27.2) | C01GO/N01GO |
+| Go | **1.27.3** (`go 1.27.3` in CI `GO_VERSION: "1.27.3"`; `go.mod` `go 1.27.3`) | C01GO/N01GO |
 | MCP Go SDK | **v1.8.0** (`github.com/modelcontextprotocol/go-sdk`) | M01 |
 | resty.dev/v3 | **v3.0.0-rc.4** (L02GO; no stable yet — latest available) | L02GO |
-| prometheus client_golang | **v1.24.1** (O01–O04) | O01–O04 |
+| prometheus client_golang | **v1.25.0** (O01–O04) | O01–O04 |
 | logrus | **v1.10.2** (L01GO) | L01GO |
 | envconfig | **v1.4.0** (env-driven config) | env-driven config |
 
@@ -34,12 +34,12 @@ local and CI behaviour match.
 
 | Tool | Version | Purpose |
 |------|---------|---------|
-| golangci-lint | **2.14.0** | `make lint` (incl. gosec, gofmt/gofumpt/govet/staticcheck/errcheck/ineffassign/unused) |
+| golangci-lint | **2.15.0** | `make lint` (incl. gosec, gofmt/gofumpt/govet/staticcheck/errcheck/ineffassign/unused) |
 | go-arch-lint | **1.19.0** | layer-edge enforcement (`.go-arch-lint.yml`, C07GO) |
 | gremlins | **0.6.0** | mutation testing hard gate (C02/C08GO) |
 | gitleaks | **8.30.1** | secret scan over git history (C03/N28) |
 | goreleaser | **2.18.2** | `make build` single-binary-per-platform artifacts (B01/B02/B04) |
-| govulncheck | **v1.8.0** | vulnerability scan (`make lint`) |
+| govulncheck | **v1.9.0** | vulnerability scan (`make lint`) |
 | docker | **29.8.1** | `make container-image` build/push |
 
 > When upgrading any tool, update it here **first**, then align the Makefile /
