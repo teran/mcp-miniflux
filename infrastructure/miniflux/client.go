@@ -183,15 +183,15 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 		cfg.httpClient = &http.Client{Timeout: cfg.timeout}
 	}
 
-	rc := resty.NewWithClient(cfg.httpClient).SetBaseURL(baseURL)
+	restyClient := resty.NewWithClient(cfg.httpClient).SetBaseURL(baseURL)
 	if cfg.userAgent != "" {
 		// resty only injects its default `go-resty/...` UA when the header is
 		// absent, so a client-level default header reliably overrides it on
 		// every request (M10/N44).
-		rc.SetHeader("User-Agent", cfg.userAgent)
+		restyClient.SetHeader("User-Agent", cfg.userAgent)
 	}
 
-	return &Client{cfg: cfg, client: rc}, nil
+	return &Client{cfg: cfg, client: restyClient}, nil
 }
 
 // AsPort exposes c through the domain port interface (SPEC §6.1, C07GO). The
