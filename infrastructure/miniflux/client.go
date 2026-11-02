@@ -75,6 +75,7 @@ type clientConfig struct {
 	metrics      MetricsRecorder
 	logger       *logrus.Logger
 	timeout      time.Duration
+	userAgent    string
 }
 
 // defaultTimeout bounds every upstream call unless overridden by WithTimeout or
@@ -149,6 +150,23 @@ func WithLogger(l *logrus.Logger) Option {
 	}
 }
 
+// WithUserAgent sets the identifying User-Agent on every outbound request
+// (M10/N44). It follows the `app-name/version (reference)` format, e.g.
+// `mcp-miniflux/1.0.0 (https://github.com/teran/mcp-miniflux)`, with the
+// version ldflags-injected at the composition root and threaded in here. An
+// empty (or whitespace-only) value is an error so a misconfigured UA can never
+// silently fall back to resty's default.
+func WithUserAgent(ua string) Option {
+	return func(c *clientConfig) error {
+		if strings.TrimSpace(ua) == "" {
+			return errors.New("miniflux: WithUserAgent requires a non-empty User-Agent")
+		}
+		c.userAgent = ua
+
+		return nil
+	}
+}
+
 // New builds a Miniflux client rooted at baseURL. An empty baseURL is an error.
 func New(baseURL string, opts ...Option) (*Client, error) {
 	if strings.TrimSpace(baseURL) == "" {
@@ -165,9 +183,15 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 		cfg.httpClient = &http.Client{Timeout: cfg.timeout}
 	}
 
-	rc := resty.NewWithClient(cfg.httpClient).SetBaseURL(baseURL)
+	restyClient := resty.NewWithClient(cfg.httpClient).SetBaseURL(baseURL)
+	if cfg.userAgent != "" {
+		// resty only injects its default `go-resty/...` UA when the header is
+		// absent, so a client-level default header reliably overrides it on
+		// every request (M10/N44).
+		restyClient.SetHeader("User-Agent", cfg.userAgent)
+	}
 
-	return &Client{cfg: cfg, client: rc}, nil
+	return &Client{cfg: cfg, client: restyClient}, nil
 }
 
 // AsPort exposes c through the domain port interface (SPEC §6.1, C07GO). The

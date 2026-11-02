@@ -111,6 +111,9 @@ func run(ctx context.Context, args []string) error {
 		miniflux.WithMetrics(upstreamMetrics), // O03 upstream metrics
 		miniflux.WithLogger(log),              // L09/L04GO outbound request log
 		miniflux.WithTimeout(upstreamTimeout),
+		// M10/N44: identifying User-Agent on every outbound request, with the
+		// version ldflags-injected into appVersion at the composition root.
+		miniflux.WithUserAgent(fmt.Sprintf("%s/%s (https://github.com/teran/mcp-miniflux)", appName, appVersion)),
 	)
 	if err != nil {
 		return fmt.Errorf("build miniflux client: %w", err)
