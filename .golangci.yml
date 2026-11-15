@@ -22,7 +22,7 @@ linters:
   # `standard` = the golangci-lint v2 default set; the extra `enable` list is
   # the strict tier added on top (both together are the C03GO requirement).
   # `gosec` (security, C05GO) is enabled at v2.30.0 — compatible with the
-  # pinned Go 1.27.3 toolchain (see `reference/versions.md`).
+  # pinned Go 1.27.4 toolchain (see `reference/versions.md`).
   default: standard
   enable:
     - gosec
