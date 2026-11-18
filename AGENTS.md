@@ -17,7 +17,7 @@ operating manual and must never contradict it.
   through** to Miniflux as `X-Auth-Token`; if absent it falls back to the
   `MINIFLUX_API_TOKEN` env var. **No OAuth2, no in-server TLS** (reverse proxy's
   job). Observability lives on a separate `:8081` (`INTERNAL_ADDR`).
-- **Implementation language:** **Go** (`go.mod` `go 1.27.3`; CI toolchain `GO_VERSION: "1.27.3"`).
+- **Implementation language:** **Go** (`go.mod` `go 1.27.4`; CI toolchain `GO_VERSION: "1.27.4"`).
 - **Layout:** layered DDD/Clean with **top-level named packages** — `internal/`
   is intentionally **NOT used** (no visibility restriction justified, recorded
   in SPEC §6.1). Top-level packages: `cmd/mcp-miniflux/main.go` (thin composition
@@ -26,7 +26,7 @@ operating manual and must never contradict it.
   observability). Layer edges are enforced by **go-arch-lint** (`.go-arch-lint.yml`):
   `cmd → application/infrastructure`, `application → domain`,
   `infrastructure → domain`, `domain → (nothing)`. Any other edge fails CI.
-- Pinned versions (single source of truth is `reference/versions.md`): Go 1.27.3
+- Pinned versions (single source of truth is `reference/versions.md`): Go 1.27.4
   (CI toolchain), MCP go-sdk v1.8.0,
   resty.dev/v3 v3.0.0-rc.4, logrus v1.10.2, prometheus
   client_golang v1.25.0, envconfig v1.4.0. **Staleness is a defect** — upgrade,
@@ -40,7 +40,8 @@ CI binds to the **build-system interface**: it calls `make <target>`, not raw
 - `make build` — **goreleaser** → single binary per platform into `dist/`.
 - `make test` — `go test -race` + **coverage ≥ 95% gate**; **fails below 95%**.
   Never ship a change that lowers coverage; add tests with the code.
-- `make lint` — golangci-lint (incl. gofmt/gofumpt/gosec), `go vet`,
+- `make lint` — golangci-lint (incl. gofmt/gofumpt/gosec), standalone
+  `gosec -quiet ./...` (C05GO), `go vet`,
   govulncheck, go-arch-lint. **Findings are FIXED, never suppressed** (no blanket
   `#nosec`, no default excludes).
 - `make container-image [push=true]` — build-only / build+push the image **from
@@ -124,7 +125,8 @@ A change is done only when **all** of the following hold:
 
 - Tests were written first (TDD); unit tests pass with **coverage ≥ 95%**
   (`make test`).
-- **Lint clean** (`make lint`): golangci-lint (incl. gosec), `go vet`, govulncheck,
+- **Lint clean** (`make lint`): golangci-lint (incl. gosec), standalone
+  `gosec -quiet ./...`, `go vet`, govulncheck,
   go-arch-lint — **no findings left unfixed, none suppressed**.
 - **gremlins mutation gate** ≥ 80/80 passes (dedicated CI job).
 - **gitleaks** secret scan over git history passes; no secrets committed.

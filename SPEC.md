@@ -919,8 +919,9 @@ startup-time or probe-time ping (A02/N35).
 The Makefile exposes the standard, language-agnostic interface that CI binds to
 (no raw `go ...` calls in CI):
 
-- `make lint` — golangci-lint (incl. gofmt/gofumpt/gosec), `go vet`,
-  govulncheck, go-arch-lint (C03GO/C05GO/C06GO/C07GO).
+- `make lint` — golangci-lint (incl. gofmt/gofumpt/gosec), a standalone
+  `gosec -quiet ./...` step (C05GO), `go vet`, govulncheck, go-arch-lint
+  (C03GO/C05GO/C06GO/C07GO).
 - `make test` — `go test -race` + **coverage ≥ 95% gate** (C01/C04GO), failing
   the build below 95%.
 - `make build` — **goreleaser** → single binary artifact per platform into
@@ -937,7 +938,8 @@ mutation (C02/C08GO) and **gitleaks** secret scan (C03/N28).
 **Stages:** linters → build → tests → release artifacts. All bound to
 `make <target>` (R07/N31); no job invokes an undeclared optional target.
 
-- **Linters (lint):** `make lint` (golangci-lint [incl. gosec] + vet + govulncheck +
+- **Linters (lint):** `make lint` (golangci-lint [incl. gosec] + standalone
+  `gosec -quiet ./...` (C05GO) + vet + govulncheck +
   go-arch-lint). Findings **fixed, not suppressed** (C05GO/C06GO/N02GO).
 - **Mutation gate (C02/C08GO/N03GO):** dedicated hard gate —
   `gremlins unleash ./... --threshold-efficacy=80 --threshold-mcover=80`,
@@ -967,7 +969,7 @@ The project pins **latest-stable** versions (single source of truth
 
 | Component | Version |
 |-----------|---------|
-| Go | **1.27.3** (CI `GO_VERSION: "1.27.3"`; `go.mod` `go 1.27.3`) (C01GO/N01GO) |
+| Go | **1.27.4** (CI `GO_VERSION: "1.27.4"`; `go.mod` `go 1.27.4`) (C01GO/N01GO) |
 | MCP Go SDK | **v1.8.0** (`github.com/modelcontextprotocol/go-sdk`) (M01) |
 | resty.dev/v3 | **v3.0.0-rc.4** (L02GO; no stable yet — latest available) |
 | prometheus client_golang | **v1.25.0** (O01–O04) |
