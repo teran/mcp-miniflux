@@ -107,8 +107,33 @@ func TestToolCallHandlerLogsRedactedArgs(t *testing.T) {
 	if _, present := gotArgs["password"]; present {
 		t.Errorf("log args leaked password: %v (L05)", gotArgs)
 	}
-	if gotArgs["feed_url"] != "https://x" {
-		t.Errorf("log args missing feed_url: %v", gotArgs)
+	if _, present := gotArgs["feed_url"]; present {
+		t.Errorf("log args leaked feed_url: %v (L05)", gotArgs)
+	}
+}
+
+// TestToolCallHandlerLogsRedactsURLLikeAndOPMLArgs locks that url/opml args are
+// absent from the logged (redacted) copy even when they embed credentials
+// (userinfo in a URL, password= inside an OPML document). Only the non-secret
+// `title` survives to the access log.
+func TestToolCallHandlerLogsRedactsURLLikeAndOPMLArgs(t *testing.T) {
+	var gotArgs map[string]any
+	logger := func(_ context.Context, _ string, redacted map[string]any, _ string, _ time.Duration, _ string) {
+		gotArgs = redacted
+	}
+	fh := &fakeHandler{}
+	args := `{"url":"https://user:pass@example.com/feed","opml":"<opml><body><outline xmlUrl=\"https://feed\" password=\"p\"/></body></opml>","title":"ok"}`
+	h := toolCallHandler("import_opml", fh, logger)
+	if _, err := h(context.Background(), newReq(t, args, "")); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	for _, k := range []string{"url", "opml"} {
+		if _, present := gotArgs[k]; present {
+			t.Errorf("log args leaked %q: %v (L05)", k, gotArgs)
+		}
+	}
+	if gotArgs["title"] != "ok" {
+		t.Errorf("log args missing non-secret title: %v", gotArgs)
 	}
 }
 

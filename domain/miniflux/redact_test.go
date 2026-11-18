@@ -366,16 +366,19 @@ func TestRedactMapRemovesSecretKeysCaseInsensitive(t *testing.T) {
 		"url":       "https://x",
 	}
 	out := RedactMap(in)
-	for _, k := range []string{"password", "Password", "token", "API_TOKEN", "apikey", "ApiKey"} {
+	for _, k := range []string{"password", "Password", "token", "API_TOKEN", "apikey", "ApiKey", "url"} {
 		if _, ok := out[k]; ok {
 			t.Errorf("secret key %q not removed: %v", k, out)
 		}
 	}
-	if out["title"] != "T" || out["url"] != "https://x" {
-		t.Errorf("non-secret keys changed/dropped: %v", out)
+	if out["title"] != "T" {
+		t.Errorf("non-secret key changed/dropped: %v", out)
 	}
-	if len(out) != 2 {
-		t.Errorf("out length = %d, want 2", len(out))
+	if _, ok := out["url"]; ok {
+		t.Errorf("url should be removed as a secret-like key: %v", out)
+	}
+	if len(out) != 1 {
+		t.Errorf("out length = %d, want 1", len(out))
 	}
 
 	// Input never mutated.
@@ -496,6 +499,95 @@ func TestRedactMapRecursesUsernameRemoval(t *testing.T) {
 	first := list[0].(map[string]any)
 	if _, ok := first["username"]; ok {
 		t.Errorf("slice-item username not removed: %v (S02)", first)
+	}
+	if first["ok"] != "x" {
+		t.Errorf("slice-item non-secret dropped: %v", first)
+	}
+}
+
+// TestRedactMapRemovesURLLikeKeys locks that url/feed_url/site_url (and case
+// variants) are stripped from arbitrary maps: feed URLs may embed HTTP basic-auth
+// userinfo (https://user:pass@host/feed), so they must never reach the access log.
+func TestRedactMapRemovesURLLikeKeys(t *testing.T) {
+	in := map[string]any{
+		"url":      "https://x",
+		"URL":      "https://y",
+		"feed_url": "https://feed/x",
+		"Feed_Url": "https://feed/y",
+		"site_url": "https://site/x",
+		"SITE_URL": "https://site/y",
+		"title":    "ok",
+	}
+	out := RedactMap(in)
+	for _, k := range []string{"url", "URL", "feed_url", "Feed_Url", "site_url", "SITE_URL"} {
+		if _, ok := out[k]; ok {
+			t.Errorf("URL-like key %q not removed: %v", k, out)
+		}
+	}
+	if out["title"] != "ok" {
+		t.Errorf("non-secret key dropped: %v", out)
+	}
+	// Input never mutated.
+	if in["url"] != "https://x" || in["feed_url"] != "https://feed/x" {
+		t.Errorf("RedactMap mutated input: %v", in)
+	}
+}
+
+// TestRedactMapRemovesOPML locks that an `opml` value is removed entirely even
+// when it is a full OPML document containing embedded password=/xmlUrl= data:
+// the whole value goes, nothing is partially retained.
+func TestRedactMapRemovesOPML(t *testing.T) {
+	opml := `<?xml version="1.0"?><opml><body><outline type="rss" xmlUrl="https://feed" password="secret"/></body></opml>`
+	in := map[string]any{
+		"opml":  opml,
+		"OPML":  opml,
+		"title": "ok",
+	}
+	out := RedactMap(in)
+	for _, k := range []string{"opml", "OPML"} {
+		if _, ok := out[k]; ok {
+			t.Errorf("OPML key %q not removed: %v", k, out)
+		}
+	}
+	if out["title"] != "ok" {
+		t.Errorf("non-secret key dropped: %v", out)
+	}
+	if in["opml"] != opml {
+		t.Errorf("RedactMap mutated input")
+	}
+}
+
+// TestRedactMapRecursesURLLikeAndOPMLRemoval mirrors
+// TestRedactMapRecursesUsernameRemoval: URL-like and OPML keys must also be
+// stripped inside nested maps and slices (the access-log `args` may nest them).
+func TestRedactMapRecursesURLLikeAndOPMLRemoval(t *testing.T) {
+	in := map[string]any{
+		"creds": map[string]any{
+			"feed_url": "https://feed/x",
+			"site_url": "https://site/x",
+			"opml":     `<opml><body><outline xmlUrl="https://feed" password="p"/></body></opml>`,
+			"keep":     1,
+		},
+		"list": []any{
+			map[string]any{"url": "https://x", "ok": "x"},
+		},
+	}
+	out := RedactMap(in)
+
+	creds := out["creds"].(map[string]any)
+	for _, k := range []string{"feed_url", "site_url", "opml"} {
+		if _, ok := creds[k]; ok {
+			t.Errorf("nested %q not removed: %v", k, creds)
+		}
+	}
+	if creds["keep"] != 1 {
+		t.Errorf("nested non-secret dropped: %v", creds)
+	}
+
+	list := out["list"].([]any)
+	first := list[0].(map[string]any)
+	if _, ok := first["url"]; ok {
+		t.Errorf("slice-item url not removed: %v", first)
 	}
 	if first["ok"] != "x" {
 		t.Errorf("slice-item non-secret dropped: %v", first)

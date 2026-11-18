@@ -78,7 +78,9 @@ gates.
   response and config field as a **struct**; annotate secret-bearing fields
   **`secret:true`** (feed `password`, `MINIFLUX_API_TOKEN`). A **single redaction
   helper** strips annotated fields from tool output and logs — no regex guessing,
-  the struct is authoritative. **Never log secrets/tokens** (L05).
+  the struct is authoritative. **Never log secrets/tokens** (L05). `RedactMap`'s
+  `secretKeySet` also removes URL/OPML-bearing `args` keys (`opml`, `feed_url`,
+  `site_url`, `url`) from access logs, since they can embed credentials (V7).
 - **Tool contracts (S08/S09):** every `tools/call` validates arguments against its
   `inputSchema` (`additionalProperties:false`) **before** execution (invalid →
   `InvalidParams`); output conforms to `outputSchema` and is passed through an

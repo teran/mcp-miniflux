@@ -777,7 +777,7 @@ request). The observability liveness probe therefore reflects process liveness,
 
 **V6 — Async refresh & `checked_at` trust.** *Threat:* `refresh_feed`/`refresh_category` (write.go:117-133,191-207) return `ok` immediately after `PUT .../refresh`; Miniflux refreshes **asynchronously**, so `checked_at` does not advance synchronously. *Impact:* the model/operator may read `checked_at` as proof of a completed refresh and act on stale entries; not a confidentiality issue, but an **integrity-of-signal** concern. *Requirement (integrity):* document that `refresh_*` is async/best-effort and `checked_at`/`next_check_at` are **informational Miniflux-controlled metadata** (models.go:31-38) that must never be used as a security or freshness decision. No code change required beyond documentation.
 
-**V7 — Access-log / argument redaction gaps (`opml`, `feed_url`, `url`).** *Threat:* the access log redacts `args` via `RedactMap` (registry.go:81; redact.go:148), whose `secretKeySet` covers `password`, `token`, `apikey`, `api_token`, `username` — but **not** `opml`, `feed_url`, or `url`. *Impact:* `import_opml` logs the **entire OPML body** verbatim, and `create_feed`/`discover_subscriptions` log `feed_url`/`url` verbatim — any of which can embed credential material (e.g. OPML feed attributes, or URL **userinfo** `https://user:pass@host/feed.xml`) → **credential leak to stdout in HTTP mode (L05/N02)**. *Requirement (S02/L05, concrete code fix):* (i) strip **URL userinfo** from `feed_url`/`url` before logging; (ii) bound/omit the `opml` body in the access-log `args` (log only its length, or redact credential-bearing attributes); (iii) extend `secretKeySet` (or add URL/OPML-aware handling) so future credential-bearing keys are covered. **Enforced for structs; gap for raw-string args — HIGH, fix required.**
+**V7 — Access-log / argument redaction (`opml`, `feed_url`, `site_url`, `url`).** *Threat:* the access log redacts `args` via `RedactMap` (registry.go:81; redact.go:148); `opml`, `feed_url`, `site_url` and `url` can embed credential material (OPML feed attributes, or URL **userinfo** `https://user:pass@host/feed.xml`) → **credential leak to stdout in HTTP mode (L05/N02)**. *Requirement (S02/L05, implemented):* `secretKeySet` now also covers `opml`, `feed_url`, `site_url`, `url` (redact.go:137), so `import_opml` no longer logs the OPML body and `create_feed`/`discover_subscriptions` no longer log `feed_url`/`url` verbatim. **Enforced in code.**
 
 **Other identified:** upstream error bodies are bounded to 512 chars and control-stripped (`sanitizeMessage`, client.go:304-316) — if Miniflux echoes a credential-bearing URL in an error, it is length-capped but not credential-scrubbed (LOW, folded into V7/V4). No local filesystem (S04 N/A), no shell/SQL (S11 N/A beyond URL allowlist), no in-process XML parsing (V1).
 
@@ -790,13 +790,13 @@ request). The observability liveness probe therefore reflects process liveness,
 | 3 | Every data class classified with C-I-A | **YES** | §7-S14(b) |
 | 4 | Domain-specific vectors identified beyond generic S01–S13 | **YES** | §7-S14(c) V1–V7 |
 | 5 | Each vector mapped to a concrete requirement (hardened S-code or new) | **YES** | §7-S14(c): V1→S08/S02, V2→S07/S09, V3→S02, V4→S11, V5→S02/L05, V6→integrity, V7→S02/L05 |
-| 6 | Redaction (S02) & no-secrets-in-logs (L05) confirmed for this domain's data | **PARTIAL** | Structs (Feed, requests) redacted ✓; **raw-string gap** — `opml` body and `feed_url`/`url` userinfo not redacted in access-log `args` (V7) — **must fix** |
+| 6 | Redaction (S02) & no-secrets-in-logs (L05) confirmed for this domain's data | **YES** | Structs (Feed, requests) redacted ✓; access-log `args` redact `opml`/`feed_url`/`site_url`/`url` via `secretKeySet` (V7) — **fixed** |
 | 7 | Destructive/irreversible ops flagged `destructiveHint` with HITL (S12) | **YES** | `delete_feed`, `delete_category`, `flush_history` (§4.3; delete.go) require `confirm:true` |
 | 8 | Mutating tools carry a real data-level idempotency mechanism (X02) | **YES** | search-before-create (`create_feed`, `create_category`), Miniflux 200-on-duplicate (`import_opml`), state-setting tools; `toggle_entry_bookmark` correctly non-idempotent (§8) |
 | 9 | Filesystem access scoped per S04 + domain file classes | **N/A** | No local filesystem; S04 N/A (documented) |
 | 10 | Audit produced by the `security` agent and embedded verbatim | **YES** | this block (§7-S14) |
 
-**Residuals to close (not blocking S14 presence but MUST be addressed):** V3 OPML-export credential redaction; V4 private-range SSRF blocking + Miniflux egress isolation; V7 access-log redaction of `opml`/`feed_url`/`url`.
+**Residuals to close (not blocking S14 presence but MUST be addressed):** V3 OPML-export credential redaction; V4 private-range SSRF blocking + Miniflux egress isolation.
 
 ---
 

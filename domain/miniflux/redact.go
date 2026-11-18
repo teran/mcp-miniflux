@@ -133,13 +133,20 @@ func redactStruct(v reflect.Value) reflect.Value {
 
 // secretKeySet is the set of lowercased map keys that RedactMap removes (L05).
 // It is deliberately name-based because tool-output and access-log `args` are
-// arbitrary map[string]any with no structural schema.
+// arbitrary map[string]any with no structural schema. URL/OPML-bearing keys
+// (opml, feed_url, site_url, url) are included because they can embed
+// credentials (OPML feed attributes, or URL userinfo https://user:pass@host)
+// that must never reach logs (V7).
 var secretKeySet = map[string]struct{}{
 	"password":  {},
 	"token":     {},
 	"apikey":    {},
 	"api_token": {},
 	"username":  {},
+	"opml":      {},
+	"feed_url":  {},
+	"site_url":  {},
+	"url":       {},
 }
 
 // RedactMap returns a deep copy of m in which every key whose lowercased name
